@@ -67,7 +67,7 @@ impl Config {
     pub fn validate(&self) -> Result<(), super::types::KopyError> {
         // Ensure source exists
         if !self.source.exists() {
-            return Err(super::types::KopyError::ConfigError(format!(
+            return Err(super::types::KopyError::Config(format!(
                 "Source path does not exist: {:?}",
                 self.source
             )));
@@ -75,7 +75,7 @@ impl Config {
 
         // Ensure source != destination
         if self.source == self.destination {
-            return Err(super::types::KopyError::ConfigError(
+            return Err(super::types::KopyError::Config(
                 "Source and destination cannot be the same".to_string(),
             ));
         }
