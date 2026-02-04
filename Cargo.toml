@@ -1,0 +1,52 @@
+[package]
+name = "kopy"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "Modern file synchronization tool - Safety by default, speed by design"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/kopy"
+readme = "README.md"
+keywords = ["sync", "rsync", "backup", "file-transfer"]
+categories = ["command-line-utilities", "filesystem"]
+
+[dependencies]
+# CLI & Config
+clap = { version = "4.5", features = ["derive", "color"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+# File System (Phase 1: Sequential walker only)
+walkdir = "2.5"
+camino = "1.1"
+
+# Pattern Matching
+globset = "0.4"
+
+# Progress & UI
+indicatif = "0.17"
+console = "0.15"
+
+# Error Handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.8"
+assert_cmd = "2.0"
+predicates = "3.0"
+
+[[bin]]
+name = "kopy"
+path = "src/main.rs"
+
+[lib]
+name = "kopy"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,26 @@
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+*.tmp
+/tests/fixtures/temp/
+
+# Backup files
+*.bak
+*.orig
+
+# kopy specific
+.kopy_trash/
+*.part
