@@ -35,7 +35,7 @@ impl FileTree {
     }
 
     /// Insert a file entry into the tree
-    /// 
+    ///
     /// Updates aggregate statistics (total_size, total_files).
     /// If the path already exists, the old entry is replaced and statistics are adjusted.
     pub fn insert(&mut self, path: PathBuf, entry: FileEntry) {
@@ -86,7 +86,7 @@ impl FileTree {
     }
 
     /// Increment the directory counter
-    /// 
+    ///
     /// Called during directory scanning to track the number of directories traversed
     pub fn increment_dirs(&mut self) {
         self.total_dirs += 1;
@@ -198,11 +198,17 @@ mod tests {
         assert!(tree.is_empty());
         assert_eq!(tree.len(), 0);
 
-        tree.insert(PathBuf::from("file1.txt"), create_test_entry("file1.txt", 100));
+        tree.insert(
+            PathBuf::from("file1.txt"),
+            create_test_entry("file1.txt", 100),
+        );
         assert!(!tree.is_empty());
         assert_eq!(tree.len(), 1);
 
-        tree.insert(PathBuf::from("file2.txt"), create_test_entry("file2.txt", 200));
+        tree.insert(
+            PathBuf::from("file2.txt"),
+            create_test_entry("file2.txt", 200),
+        );
         assert_eq!(tree.len(), 2);
     }
 
@@ -210,11 +216,7 @@ mod tests {
     fn test_iteration() {
         let mut tree = FileTree::new(PathBuf::from("/root"));
 
-        let files = vec![
-            ("a.txt", 100),
-            ("b.txt", 200),
-            ("c.txt", 300),
-        ];
+        let files = vec![("a.txt", 100), ("b.txt", 200), ("c.txt", 300)];
 
         for (name, size) in &files {
             tree.insert(PathBuf::from(name), create_test_entry(name, *size));
@@ -305,8 +307,14 @@ mod tests {
     fn test_zero_size_files() {
         let mut tree = FileTree::new(PathBuf::from("/root"));
 
-        tree.insert(PathBuf::from("empty.txt"), create_test_entry("empty.txt", 0));
-        tree.insert(PathBuf::from("also_empty.txt"), create_test_entry("also_empty.txt", 0));
+        tree.insert(
+            PathBuf::from("empty.txt"),
+            create_test_entry("empty.txt", 0),
+        );
+        tree.insert(
+            PathBuf::from("also_empty.txt"),
+            create_test_entry("also_empty.txt", 0),
+        );
 
         assert_eq!(tree.len(), 2);
         assert_eq!(tree.total_files, 2);
@@ -316,7 +324,10 @@ mod tests {
     #[test]
     fn test_clone() {
         let mut tree = FileTree::new(PathBuf::from("/root"));
-        tree.insert(PathBuf::from("file.txt"), create_test_entry("file.txt", 500));
+        tree.insert(
+            PathBuf::from("file.txt"),
+            create_test_entry("file.txt", 500),
+        );
         tree.set_scan_duration(Duration::from_secs(5));
         tree.increment_dirs();
 

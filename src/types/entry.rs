@@ -29,12 +29,7 @@ pub struct FileEntry {
 
 impl FileEntry {
     /// Create a new FileEntry with the given parameters
-    pub fn new(
-        path: PathBuf,
-        size: u64,
-        mtime: SystemTime,
-        permissions: u32,
-    ) -> Self {
+    pub fn new(path: PathBuf, size: u64, mtime: SystemTime, permissions: u32) -> Self {
         Self {
             path,
             size,

@@ -49,14 +49,14 @@ impl SyncAction {
     }
 
     /// Check if this action requires file transfer
-    /// 
+    ///
     /// Returns true for CopyNew and Overwrite, false otherwise
     pub fn requires_transfer(&self) -> bool {
         matches!(self, SyncAction::CopyNew(_) | SyncAction::Overwrite(_))
     }
 
     /// Get the path associated with this action
-    /// 
+    ///
     /// Returns None for Skip variant
     pub fn path(&self) -> Option<&PathBuf> {
         match self {
@@ -68,7 +68,7 @@ impl SyncAction {
     }
 
     /// Get the FileEntry if this action contains one
-    /// 
+    ///
     /// Returns Some for CopyNew and Overwrite, None otherwise
     pub fn file_entry(&self) -> Option<&FileEntry> {
         match self {
@@ -105,14 +105,14 @@ pub enum DeleteMode {
 
 impl DeleteMode {
     /// Check if this delete mode is safe (non-destructive)
-    /// 
+    ///
     /// Returns true for None and Trash, false for Permanent
     pub fn is_safe(&self) -> bool {
         matches!(self, DeleteMode::None | DeleteMode::Trash)
     }
 
     /// Check if this delete mode is destructive
-    /// 
+    ///
     /// Returns true for Permanent, false otherwise
     pub fn is_destructive(&self) -> bool {
         matches!(self, DeleteMode::Permanent)
@@ -396,7 +396,10 @@ mod tests {
     #[test]
     fn test_delete_mode_description() {
         assert_eq!(DeleteMode::None.description(), "No deletions");
-        assert_eq!(DeleteMode::Trash.description(), "Move to trash (recoverable)");
+        assert_eq!(
+            DeleteMode::Trash.description(),
+            "Move to trash (recoverable)"
+        );
         assert_eq!(
             DeleteMode::Permanent.description(),
             "Permanent deletion (DANGEROUS)"
