@@ -10,7 +10,10 @@ use crate::types::SyncAction;
 use crate::Config;
 
 /// Execute a sync plan
-pub fn execute_plan(_plan: Vec<SyncAction>, _config: &Config) -> Result<(), crate::types::KopyError> {
+pub fn execute_plan(
+    _plan: Vec<SyncAction>,
+    _config: &Config,
+) -> Result<(), crate::types::KopyError> {
     // TODO: Implement plan execution
     todo!("Implement execute_plan")
 }

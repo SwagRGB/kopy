@@ -1,11 +1,11 @@
 //! Core type definitions for kopy
 
-mod entry;
-mod tree;
 mod action;
+mod entry;
 mod error;
+mod tree;
 
+pub use action::{DeleteMode, SyncAction};
 pub use entry::FileEntry;
-pub use tree::FileTree;
-pub use action::{SyncAction, DeleteMode};
 pub use error::KopyError;
+pub use tree::FileTree;

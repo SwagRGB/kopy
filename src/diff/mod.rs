@@ -3,5 +3,5 @@
 mod compare;
 mod plan;
 
-pub use plan::generate_sync_plan;
 pub use compare::compare_files;
+pub use plan::generate_sync_plan;

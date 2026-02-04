@@ -15,10 +15,10 @@
 - [x] Configure `Cargo.toml` with Phase 1 dependencies
 - [x] Set up `.gitignore` and repository
 - [x] Create module structure (lib.rs, main.rs)
-- [ ] Set up CI/CD pipeline (GitHub Actions)
-  - [ ] Rust fmt check
-  - [ ] Clippy lints
-  - [ ] Unit tests
+- [x] Set up CI/CD pipeline (GitHub Actions)
+  - [x] Rust fmt check
+  - [x] Clippy lints
+  - [x] Unit tests
   - [ ] Integration tests
 
 #### Core Type System

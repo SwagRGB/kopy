@@ -1,21 +1,21 @@
 //! FileTree - Directory structure representation
 
+use super::FileEntry;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
-use super::FileEntry;
 
 /// File tree (directory structure)
 #[derive(Debug, Clone)]
 pub struct FileTree {
     /// Map: relative_path → FileEntry
     pub entries: HashMap<PathBuf, FileEntry>,
-    
+
     /// Aggregate statistics
     pub total_size: u64,
     pub total_files: usize,
     pub total_dirs: usize,
-    
+
     /// Scan metadata
     pub scan_duration: Duration,
     pub root_path: PathBuf,

@@ -1,5 +1,4 @@
 use clap::Parser;
-use kopy::Config;
 
 /// kopy - Modern file synchronization tool
 #[derive(Parser, Debug)]
