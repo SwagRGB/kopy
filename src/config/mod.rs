@@ -48,7 +48,6 @@ pub struct Cli {
 // Configuration Struct
 // ═══════════════════════════════════════════════════════════
 
-
 /// Global configuration for kopy
 #[derive(Debug, Clone)]
 pub struct Config {

@@ -1,6 +1,6 @@
+use clap::Parser;
 use kopy::config::Cli;
 use kopy::Config;
-use clap::Parser;
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
