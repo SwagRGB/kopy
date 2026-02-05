@@ -16,7 +16,7 @@ pub mod types;
 pub mod ui;
 
 // Re-export commonly used types
-pub use config::Config;
+pub use config::{Cli, Config};
 pub use types::{DeleteMode, FileEntry, FileTree, KopyError, SyncAction};
 
 /// Library version
