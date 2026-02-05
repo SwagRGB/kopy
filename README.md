@@ -212,9 +212,6 @@ kopy/
 │   ├── executor/         # File operations
 │   ├── hash/             # Hashing utilities
 │   └── ui/               # Progress and reporting
-├── about_project.md      # Detailed project vision
-├── implementation_plan.md # Technical specifications
-└── task.md               # Development roadmap
 ```
 
 ---
