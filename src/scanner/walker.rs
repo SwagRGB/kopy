@@ -117,7 +117,7 @@ pub fn scan_directory(
                 };
 
                 // Handle symlinks
-                let (is_symlink, symlink_target) = if metadata.is_symlink() {
+                let (_is_symlink, symlink_target) = if metadata.is_symlink() {
                     match std::fs::read_link(entry.path()) {
                         Ok(target) => (true, Some(target)),
                         Err(e) => {
@@ -152,15 +152,17 @@ pub fn scan_directory(
                 })?;
 
                 // Create FileEntry
-                let file_entry = if is_symlink {
+                let file_entry = if let Some(target) = symlink_target {
+                    // Symlink with valid target
                     FileEntry::new_symlink(
                         relative_path.clone(),
                         metadata.len(),
                         mtime,
                         permissions,
-                        symlink_target.unwrap(),
+                        target,
                     )
                 } else {
+                    // Regular file
                     FileEntry::new(relative_path.clone(), metadata.len(), mtime, permissions)
                 };
 
