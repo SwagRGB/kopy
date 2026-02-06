@@ -96,7 +96,8 @@ pub fn scan_directory(
                     Err(e) => {
                         // Log warning for permission denied or broken symlinks
                         eprintln!(
-                            "Warning: Failed to read metadata for {}: {}",
+                            "Warning: Failed to read metadata for {}: {}. \
+                             Try checking file permissions or if the file was deleted during scan.",
                             entry.path().display(),
                             e
                         );
@@ -109,7 +110,8 @@ pub fn scan_directory(
                     Ok(p) => p.to_path_buf(),
                     Err(_) => {
                         eprintln!(
-                            "Warning: Failed to calculate relative path for {}",
+                            "Warning: Failed to calculate relative path for {}. \
+                             This may indicate a symlink pointing outside the scan directory. File will be skipped.",
                             entry.path().display()
                         );
                         continue;
@@ -122,7 +124,8 @@ pub fn scan_directory(
                         Ok(target) => (true, Some(target)),
                         Err(e) => {
                             eprintln!(
-                                "Warning: Failed to read symlink target for {}: {}",
+                                "Warning: Failed to read symlink target for {}: {}. \
+                                 Broken symlink will be skipped.",
                                 entry.path().display(),
                                 e
                             );
@@ -147,7 +150,8 @@ pub fn scan_directory(
                 // Get modification time
                 let mtime = metadata.modified().map_err(|e| {
                     KopyError::Io(std::io::Error::other(format!(
-                        "Failed to get mtime for {}: {}",
+                        "Failed to get modification time for {}: {}. \
+                         This may indicate an unsupported filesystem or corrupted metadata.",
                         entry.path().display(),
                         e
                     )))
@@ -182,7 +186,11 @@ pub fn scan_directory(
             }
             Err(e) => {
                 // Handle walker errors (permission denied, etc.)
-                eprintln!("Warning: Error during directory traversal: {}", e);
+                eprintln!(
+                    "Warning: Error during directory traversal: {}. \
+                     Scan will continue with remaining files.",
+                    e
+                );
                 // Continue scanning despite errors
                 continue;
             }
