@@ -55,9 +55,9 @@ pub fn scan_directory(
         })?;
     }
 
-    let overrides = override_builder.build().map_err(|e| {
-        KopyError::Config(format!("Failed to build exclude overrides: {}", e))
-    })?;
+    let overrides = override_builder
+        .build()
+        .map_err(|e| KopyError::Config(format!("Failed to build exclude overrides: {}", e)))?;
 
     // Build walker with ignore crate
     // Enable .gitignore, .ignore, .git/info/exclude support
@@ -146,9 +146,11 @@ pub fn scan_directory(
 
                 // Get modification time
                 let mtime = metadata.modified().map_err(|e| {
-                    KopyError::Io(std::io::Error::other(
-                        format!("Failed to get mtime for {}: {}", entry.path().display(), e),
-                    ))
+                    KopyError::Io(std::io::Error::other(format!(
+                        "Failed to get mtime for {}: {}",
+                        entry.path().display(),
+                        e
+                    )))
                 })?;
 
                 // Create FileEntry
@@ -193,7 +195,6 @@ pub fn scan_directory(
 
     Ok(tree)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -274,7 +275,10 @@ mod tests {
         let tree = result.unwrap();
         assert_eq!(tree.total_files, 2, "Should have 2 files");
         assert_eq!(tree.total_size, 6 + 14, "Should have 20 bytes total");
-        assert!(tree.total_dirs >= 3, "Should have at least 3 directories (a, b, c)");
+        assert!(
+            tree.total_dirs >= 3,
+            "Should have at least 3 directories (a, b, c)"
+        );
 
         // Check relative paths are correct
         let path1 = std::path::PathBuf::from("a/b/file.txt");
@@ -303,14 +307,19 @@ mod tests {
         assert!(result.is_ok(), "scan_directory should succeed");
 
         let tree = result.unwrap();
-        
+
         // Should have both the target and the symlink
         let link_relative = std::path::PathBuf::from("link.txt");
         assert!(tree.contains(&link_relative), "Should contain the symlink");
 
-        let link_entry = tree.get(&link_relative).expect("Symlink entry should exist");
+        let link_entry = tree
+            .get(&link_relative)
+            .expect("Symlink entry should exist");
         assert!(link_entry.is_symlink, "Entry should be marked as symlink");
-        assert!(link_entry.symlink_target.is_some(), "Symlink should have target");
+        assert!(
+            link_entry.symlink_target.is_some(),
+            "Symlink should have target"
+        );
     }
 
     #[test]
@@ -326,7 +335,10 @@ mod tests {
 
         let result = scan_directory(root_path, &Config::default(), None);
         // Should not panic, should complete successfully
-        assert!(result.is_ok(), "scan_directory should handle broken symlinks gracefully");
+        assert!(
+            result.is_ok(),
+            "scan_directory should handle broken symlinks gracefully"
+        );
 
         // Broken symlink might be skipped or included depending on implementation
         // The key is that it doesn't crash
@@ -338,11 +350,7 @@ mod tests {
         let root_path = temp_dir.path();
 
         // Create multiple files with known sizes
-        let files = vec![
-            ("file1.txt", 100),
-            ("file2.txt", 200),
-            ("file3.txt", 300),
-        ];
+        let files = vec![("file1.txt", 100), ("file2.txt", 200), ("file3.txt", 300)];
 
         let mut expected_size = 0;
         for (name, size) in &files {
@@ -359,7 +367,10 @@ mod tests {
 
         let tree = result.unwrap();
         assert_eq!(tree.total_files, 3, "Should have 3 files");
-        assert_eq!(tree.total_size, expected_size as u64, "Total size should match");
+        assert_eq!(
+            tree.total_size, expected_size as u64,
+            "Total size should match"
+        );
     }
 
     #[test]
@@ -402,9 +413,18 @@ mod tests {
         let tree = scan_directory(root, &config, None).expect("scan_directory should succeed");
 
         // Should only contain keep.txt (and .gitignore itself)
-        assert!(tree.contains(&PathBuf::from("keep.txt")), "Should contain keep.txt");
-        assert!(!tree.contains(&PathBuf::from("ignore.log")), "Should NOT contain ignore.log");
-        assert!(!tree.contains(&PathBuf::from("temp/file.txt")), "Should NOT contain temp/file.txt");
+        assert!(
+            tree.contains(&PathBuf::from("keep.txt")),
+            "Should contain keep.txt"
+        );
+        assert!(
+            !tree.contains(&PathBuf::from("ignore.log")),
+            "Should NOT contain ignore.log"
+        );
+        assert!(
+            !tree.contains(&PathBuf::from("temp/file.txt")),
+            "Should NOT contain temp/file.txt"
+        );
     }
 
     #[test]
@@ -426,9 +446,18 @@ mod tests {
         let tree = scan_directory(root, &config, None).expect("scan_directory should succeed");
 
         // Should only contain keep.txt (and .kopyignore itself)
-        assert!(tree.contains(&PathBuf::from("keep.txt")), "Should contain keep.txt");
-        assert!(!tree.contains(&PathBuf::from("ignore.tmp")), "Should NOT contain ignore.tmp");
-        assert!(!tree.contains(&PathBuf::from("cache/data.txt")), "Should NOT contain cache/data.txt");
+        assert!(
+            tree.contains(&PathBuf::from("keep.txt")),
+            "Should contain keep.txt"
+        );
+        assert!(
+            !tree.contains(&PathBuf::from("ignore.tmp")),
+            "Should NOT contain ignore.tmp"
+        );
+        assert!(
+            !tree.contains(&PathBuf::from("cache/data.txt")),
+            "Should NOT contain cache/data.txt"
+        );
     }
 
     #[test]
@@ -451,9 +480,18 @@ mod tests {
 
         // Should only contain keep.txt
         assert_eq!(tree.total_files, 1, "Should have exactly 1 file");
-        assert!(tree.contains(&PathBuf::from("keep.txt")), "Should contain keep.txt");
-        assert!(!tree.contains(&PathBuf::from("ignore.log")), "Should NOT contain ignore.log");
-        assert!(!tree.contains(&PathBuf::from("debug.log")), "Should NOT contain debug.log");
+        assert!(
+            tree.contains(&PathBuf::from("keep.txt")),
+            "Should contain keep.txt"
+        );
+        assert!(
+            !tree.contains(&PathBuf::from("ignore.log")),
+            "Should NOT contain ignore.log"
+        );
+        assert!(
+            !tree.contains(&PathBuf::from("debug.log")),
+            "Should NOT contain debug.log"
+        );
     }
 
     #[test]
@@ -484,8 +522,8 @@ mod tests {
         });
 
         let config = Config::default();
-        let tree = scan_directory(root, &config, Some(&callback))
-            .expect("scan_directory should succeed");
+        let tree =
+            scan_directory(root, &config, Some(&callback)).expect("scan_directory should succeed");
 
         // Verify callback was called 5 times (once per file)
         assert_eq!(
