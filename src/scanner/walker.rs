@@ -5,6 +5,13 @@ use crate::types::{FileEntry, FileTree, KopyError};
 use std::path::Path;
 use std::time::Instant;
 
+/// Callback for reporting scan progress
+///
+/// Arguments:
+/// - `files_scanned`: Total number of files scanned so far
+/// - `bytes_scanned`: Total bytes scanned so far
+pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
+
 /// Scan a directory and build a FileTree
 ///
 /// Walks the directory tree recursively and builds a complete FileTree representation.
@@ -13,6 +20,7 @@ use std::time::Instant;
 /// # Arguments
 /// * `root_path` - The root directory to scan
 /// * `config` - Configuration containing exclude patterns and other settings
+/// * `on_progress` - Optional callback for progress updates (files_scanned, bytes_scanned)
 ///
 /// # Returns
 /// * `Ok(FileTree)` - Successfully scanned tree with all files and metadata
@@ -23,9 +31,17 @@ use std::time::Instant;
 /// * Broken symlinks are skipped with a warning
 /// * Invalid exclude patterns return KopyError::Config
 /// * Other IO errors are propagated as KopyError
-pub fn scan_directory(root_path: &Path, config: &Config) -> Result<FileTree, KopyError> {
+pub fn scan_directory(
+    root_path: &Path,
+    config: &Config,
+    on_progress: Option<&ProgressCallback>,
+) -> Result<FileTree, KopyError> {
     let start_time = Instant::now();
     let mut tree = FileTree::new(root_path.to_path_buf());
+
+    // Progress tracking
+    let mut scanned_count: u64 = 0;
+    let mut scanned_bytes: u64 = 0;
 
     // Build override patterns from CLI exclude patterns
     let mut override_builder = ignore::overrides::OverrideBuilder::new(root_path);
@@ -150,6 +166,15 @@ pub fn scan_directory(root_path: &Path, config: &Config) -> Result<FileTree, Kop
 
                 // Insert into tree (automatically updates statistics)
                 tree.insert(relative_path, file_entry);
+
+                // Update progress counters
+                scanned_count += 1;
+                scanned_bytes += metadata.len();
+
+                // Emit progress event
+                if let Some(callback) = on_progress {
+                    callback(scanned_count, scanned_bytes);
+                }
             }
             Err(e) => {
                 // Handle walker errors (permission denied, etc.)
@@ -183,7 +208,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let root_path = temp_dir.path();
 
-        let result = scan_directory(root_path, &Config::default());
+        let result = scan_directory(root_path, &Config::default(), None);
         assert!(result.is_ok(), "scan_directory should succeed on empty dir");
 
         let tree = result.unwrap();
@@ -204,7 +229,7 @@ mod tests {
         file.write_all(b"Hello, World!").expect("Failed to write");
         drop(file);
 
-        let result = scan_directory(root_path, &Config::default());
+        let result = scan_directory(root_path, &Config::default(), None);
         assert!(result.is_ok(), "scan_directory should succeed");
 
         let tree = result.unwrap();
@@ -241,7 +266,7 @@ mod tests {
         file2.write_all(b"File 2 content").expect("Failed to write");
         drop(file2);
 
-        let result = scan_directory(root_path, &Config::default());
+        let result = scan_directory(root_path, &Config::default(), None);
         assert!(result.is_ok(), "scan_directory should succeed");
 
         let tree = result.unwrap();
@@ -272,7 +297,7 @@ mod tests {
         let link_path = root_path.join("link.txt");
         std::os::unix::fs::symlink(&target_path, &link_path).expect("Failed to create symlink");
 
-        let result = scan_directory(root_path, &Config::default());
+        let result = scan_directory(root_path, &Config::default(), None);
         assert!(result.is_ok(), "scan_directory should succeed");
 
         let tree = result.unwrap();
@@ -297,7 +322,7 @@ mod tests {
         let fake_target = root_path.join("nonexistent.txt");
         std::os::unix::fs::symlink(&fake_target, &link_path).expect("Failed to create symlink");
 
-        let result = scan_directory(root_path, &Config::default());
+        let result = scan_directory(root_path, &Config::default(), None);
         // Should not panic, should complete successfully
         assert!(result.is_ok(), "scan_directory should handle broken symlinks gracefully");
 
@@ -327,7 +352,7 @@ mod tests {
             drop(file);
         }
 
-        let result = scan_directory(root_path, &Config::default());
+        let result = scan_directory(root_path, &Config::default(), None);
         assert!(result.is_ok(), "scan_directory should succeed");
 
         let tree = result.unwrap();
@@ -344,7 +369,7 @@ mod tests {
         let file_path = root_path.join("test.txt");
         fs::File::create(&file_path).expect("Failed to create file");
 
-        let result = scan_directory(root_path, &Config::default());
+        let result = scan_directory(root_path, &Config::default(), None);
         assert!(result.is_ok(), "scan_directory should succeed");
 
         let tree = result.unwrap();
@@ -372,7 +397,7 @@ mod tests {
         fs::write(root.join("temp/file.txt"), "ignore").expect("Failed to create temp/file.txt");
 
         let config = Config::default();
-        let tree = scan_directory(root, &config).expect("scan_directory should succeed");
+        let tree = scan_directory(root, &config, None).expect("scan_directory should succeed");
 
         // Should only contain keep.txt (and .gitignore itself)
         assert!(tree.contains(&PathBuf::from("keep.txt")), "Should contain keep.txt");
@@ -396,7 +421,7 @@ mod tests {
         fs::write(root.join("cache/data.txt"), "ignore").expect("Failed to create cache/data.txt");
 
         let config = Config::default();
-        let tree = scan_directory(root, &config).expect("scan_directory should succeed");
+        let tree = scan_directory(root, &config, None).expect("scan_directory should succeed");
 
         // Should only contain keep.txt (and .kopyignore itself)
         assert!(tree.contains(&PathBuf::from("keep.txt")), "Should contain keep.txt");
@@ -420,12 +445,54 @@ mod tests {
         config.destination = PathBuf::from("/tmp/dest");
         config.exclude_patterns = vec!["*.log".to_string()];
 
-        let tree = scan_directory(root, &config).expect("scan_directory should succeed");
+        let tree = scan_directory(root, &config, None).expect("scan_directory should succeed");
 
         // Should only contain keep.txt
         assert_eq!(tree.total_files, 1, "Should have exactly 1 file");
         assert!(tree.contains(&PathBuf::from("keep.txt")), "Should contain keep.txt");
         assert!(!tree.contains(&PathBuf::from("ignore.log")), "Should NOT contain ignore.log");
         assert!(!tree.contains(&PathBuf::from("debug.log")), "Should NOT contain debug.log");
+    }
+
+    #[test]
+    fn test_scan_progress_callback() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path();
+
+        // Create 5 files
+        for i in 1..=5 {
+            let filename = format!("file{}.txt", i);
+            fs::write(root.join(&filename), format!("content {}", i))
+                .unwrap_or_else(|_| panic!("Failed to create {}", filename));
+        }
+
+        // Create atomic counter for progress tracking
+        let call_count = Arc::new(AtomicU64::new(0));
+        let call_count_clone = Arc::clone(&call_count);
+
+        // Create progress callback
+        let callback: ProgressCallback = Box::new(move |files, bytes| {
+            call_count_clone.fetch_add(1, Ordering::SeqCst);
+            // Verify counts are increasing
+            assert!(files > 0, "File count should be positive");
+            assert!(bytes > 0, "Byte count should be positive");
+        });
+
+        let config = Config::default();
+        let tree = scan_directory(root, &config, Some(&callback))
+            .expect("scan_directory should succeed");
+
+        // Verify callback was called 5 times (once per file)
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            5,
+            "Progress callback should be called 5 times"
+        );
+
+        // Verify tree has correct file count
+        assert_eq!(tree.total_files, 5, "Tree should contain 5 files");
     }
 }
