@@ -16,8 +16,8 @@ clap = { version = "4.5", features = ["derive", "color"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 
-# File System (Phase 1: Sequential walker only)
-walkdir = "2.5"
+# File System (Phase 1: Sequential walker, Phase 2: Parallel + .gitignore support)
+ignore = "0.4"
 camino = "1.1"
 
 # Pattern Matching
