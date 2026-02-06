@@ -479,10 +479,12 @@ mod tests {
         fs::write(root.join("debug.log"), "ignore").expect("Failed to create debug.log");
 
         // Config with exclude pattern
-        let mut config = Config::default();
-        config.source = root.to_path_buf();
-        config.destination = PathBuf::from("/tmp/dest");
-        config.exclude_patterns = vec!["*.log".to_string()];
+        let config = Config {
+            source: root.to_path_buf(),
+            destination: PathBuf::from("/tmp/dest"),
+            exclude_patterns: vec!["*.log".to_string()],
+            ..Default::default()
+        };
 
         let tree = scan_directory(root, &config, None).expect("scan_directory should succeed");
 
