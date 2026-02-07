@@ -1,11 +1,11 @@
 [package]
 name = "kopy"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Swagnik Banerjee <[arko9120@gmail.com]>"]
 description = "Modern file synchronization tool - Safety by default, speed by design"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourusername/kopy"
+repository = "https://github.com/SwagRGB/kopy"
 readme = "README.md"
 keywords = ["sync", "rsync", "backup", "file-transfer"]
 categories = ["command-line-utilities", "filesystem"]
