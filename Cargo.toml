@@ -1,6 +1,6 @@
 [package]
 name = "kopy"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "Modern file synchronization tool - Safety by default, speed by design"

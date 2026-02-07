@@ -56,25 +56,34 @@ kopy verify src/ dest/
 
 **Goal:** Working local sync with core safety features
 
+**Completed:**
 - [x] Project setup and architecture
 - [x] Core data structures (FileEntry, FileTree, SyncAction)
-- [x] Error handling system
+- [x] Error handling system (KopyError with thiserror)
 - [x] Configuration system with validation
 - [x] CLI argument parsing with clap
-- [ ] Directory scanner (walkdir)
-- [ ] Basic diff engine (metadata only)
-- [ ] Single-threaded file copy with `.part` files
-- [ ] Trash-can delete implementation
-- [ ] Simple progress bar
-- [ ] Exclude patterns (.gitignore parsing)
-- [ ] Dry-run mode
+- [x] Directory scanner (sequential walker with ignore crate)
+- [x] Exclude pattern filtering (.gitignore and .kopyignore support)
+- [x] Diff engine with tree comparison
+  - [x] Metadata comparison (Tier 1)
+  - [x] Content hashing with Blake3 (Tier 2)
+  - [x] Delete detection
+  - [x] Plan statistics with time estimation
+- [x] Checksum mode (--checksum flag)
+
+**In Progress:**
+- [ ] File operations (atomic copy, trash delete)
+- [ ] Executor (execute sync plan)
+- [ ] Progress UI (real-time progress bars)
+- [ ] Dry-run output formatting
+- [ ] Error summary reporting
 
 **Target:** `kopy src/ dest/` works reliably for local directories
 
 ### Future Phases
 
-- **Phase 2:** Performance (parallel transfers, Blake3 hashing, resume capability)
-- **Phase 3:** Remote sync (SSH support, delta transfers, watch mode)
+- **Phase 2:** Performance (parallel transfers, adaptive time estimation, resume capability)
+- **Phase 3:** Remote sync (SSH support, delta transfers, watch mode, network latency estimation)
 - **Phase 4:** Polish (comprehensive error messages, shell completions, 1.0 release)
 
 ---
