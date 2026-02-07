@@ -2,7 +2,7 @@
 name = "kopy"
 version = "0.4.0"
 edition = "2021"
-authors = ["Swagnik Banerjee <[arko9120@gmail.com]>"]
+authors = ["Swagnik Banerjee <arko9120@gmail.com>"]
 description = "Modern file synchronization tool - Safety by default, speed by design"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/SwagRGB/kopy"
