@@ -1,19 +1,18 @@
-//! Execution coordinator
+//! Executor module for file operations
 
-mod copy;
-mod trash;
+pub mod copy;
+pub mod trash;
 
-pub use copy::copy_file_atomic;
-pub use trash::move_to_trash;
-
-use crate::types::SyncAction;
+use crate::diff::DiffPlan;
+use crate::types::KopyError;
 use crate::Config;
 
+// Re-export for convenience
+pub use copy::copy_file_atomic;
+
 /// Execute a sync plan
-pub fn execute_plan(
-    _plan: Vec<SyncAction>,
-    _config: &Config,
-) -> Result<(), crate::types::KopyError> {
-    // TODO: Implement plan execution
+///
+/// This will be implemented in Phase 1 after copy_file_atomic is complete
+pub fn execute_plan(_plan: &DiffPlan, _config: &Config) -> Result<(), KopyError> {
     todo!("Implement execute_plan")
 }

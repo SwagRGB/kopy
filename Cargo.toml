@@ -35,6 +35,10 @@ anyhow = "1.0"
 # Hashing (Phase 4.2)
 blake3 = "1.5"
 
+# File metadata (Phase 1)
+filetime = "0.2"
+
+
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3.8"
