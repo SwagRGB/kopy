@@ -32,6 +32,9 @@ console = "0.15"
 thiserror = "1.0"
 anyhow = "1.0"
 
+# Hashing (Phase 4.2)
+blake3 = "1.5"
+
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3.8"
