@@ -155,9 +155,8 @@ pub fn move_to_trash(
     // Load existing manifest or create new one
     let mut manifest = if manifest_path.exists() {
         let manifest_content = fs::read_to_string(&manifest_path).map_err(KopyError::Io)?;
-        serde_json::from_str(&manifest_content).map_err(|e| {
-            KopyError::Validation(format!("Failed to parse MANIFEST.json: {}", e))
-        })?
+        serde_json::from_str(&manifest_content)
+            .map_err(|e| KopyError::Validation(format!("Failed to parse MANIFEST.json: {}", e)))?
     } else {
         TrashManifest::new()
     };
@@ -171,9 +170,8 @@ pub fn move_to_trash(
     });
 
     // Write manifest back to disk
-    let manifest_json = serde_json::to_string_pretty(&manifest).map_err(|e| {
-        KopyError::Validation(format!("Failed to serialize MANIFEST.json: {}", e))
-    })?;
+    let manifest_json = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| KopyError::Validation(format!("Failed to serialize MANIFEST.json: {}", e)))?;
 
     fs::write(&manifest_path, manifest_json).map_err(KopyError::Io)?;
 
