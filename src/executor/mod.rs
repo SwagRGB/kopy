@@ -9,6 +9,7 @@ use crate::Config;
 
 // Re-export for convenience
 pub use copy::copy_file_atomic;
+pub use trash::move_to_trash;
 
 /// Execute a sync plan
 ///
