@@ -6,6 +6,7 @@ use crate::scanner::scan_directory;
 use crate::types::KopyError;
 use crate::ui::ProgressReporter;
 use crate::Config;
+use indicatif::HumanBytes;
 use std::sync::{Arc, Mutex};
 
 /// Run the sync operation
@@ -119,40 +120,24 @@ fn has_executable_actions(plan: &crate::diff::DiffPlan) -> bool {
 }
 
 fn print_plan_summary(plan: &crate::diff::DiffPlan) {
-    println!("Plan:");
-    println!(
-        "  Copy: {}  Update: {}  Delete: {}  Skip: {}",
+    println!("{}", format_plan_preview(plan));
+}
+
+fn format_plan_preview(plan: &crate::diff::DiffPlan) -> String {
+    format!(
+        "Plan:\n  Copy: {}  Update: {}  Delete: {}  Skip: {}\n  Total bytes to transfer: {}",
         plan.stats.copy_count,
         plan.stats.overwrite_count,
         plan.stats.delete_count,
-        plan.stats.skip_count
-    );
-    println!("  Total bytes to transfer: {}", plan.stats.total_bytes);
-
-    for action in &plan.actions {
-        match action {
-            crate::types::SyncAction::CopyNew(entry) => {
-                println!("  COPY      {}", entry.path.display());
-            }
-            crate::types::SyncAction::Overwrite(entry) => {
-                println!("  UPDATE    {}", entry.path.display());
-            }
-            crate::types::SyncAction::Delete(path) => {
-                println!("  DELETE    {}", path.display());
-            }
-            crate::types::SyncAction::Skip => {
-                println!("  SKIP      <unchanged>");
-            }
-            crate::types::SyncAction::Move { from, to } => {
-                println!("  MOVE      {} -> {}", from.display(), to.display());
-            }
-        }
-    }
+        plan.stats.skip_count,
+        HumanBytes(plan.stats.total_bytes)
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diff::DiffPlan;
     use crate::types::{FileEntry, SyncAction};
     use std::path::PathBuf;
     use std::time::{Duration, UNIX_EPOCH};
@@ -185,5 +170,47 @@ mod tests {
             0o644,
         )));
         assert!(has_executable_actions(&plan));
+    }
+
+    #[test]
+    fn test_format_plan_preview_contains_action_counts() {
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::CopyNew(FileEntry::new(
+            PathBuf::from("copy.txt"),
+            1024,
+            UNIX_EPOCH + Duration::from_secs(1_000),
+            0o644,
+        )));
+        plan.add_action(SyncAction::Overwrite(FileEntry::new(
+            PathBuf::from("update.txt"),
+            2048,
+            UNIX_EPOCH + Duration::from_secs(2_000),
+            0o644,
+        )));
+        plan.add_action(SyncAction::Delete(PathBuf::from("delete.txt")));
+        plan.add_action(SyncAction::Skip);
+
+        let preview = format_plan_preview(&plan);
+        assert!(preview.contains("Copy: 1"));
+        assert!(preview.contains("Update: 1"));
+        assert!(preview.contains("Delete: 1"));
+        assert!(preview.contains("Skip: 1"));
+    }
+
+    #[test]
+    fn test_format_plan_preview_uses_human_readable_total_bytes() {
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::CopyNew(FileEntry::new(
+            PathBuf::from("big.bin"),
+            5 * 1024 * 1024,
+            UNIX_EPOCH + Duration::from_secs(1_000),
+            0o644,
+        )));
+
+        let preview = format_plan_preview(&plan);
+        assert!(
+            preview.contains("Total bytes to transfer:") && preview.contains("MiB"),
+            "expected human-readable size in preview, got: {preview}"
+        );
     }
 }
