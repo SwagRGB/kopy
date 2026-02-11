@@ -24,3 +24,4 @@ Thumbs.db
 # kopy specific
 .kopy_trash/
 *.part
+AGENTS.md
