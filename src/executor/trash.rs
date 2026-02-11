@@ -11,7 +11,7 @@ use crate::Config;
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{Error, ErrorKind};
 use std::path::Path;
 
 // ═══════════════════════════════════════════════════════════
@@ -116,11 +116,13 @@ pub fn move_to_trash(
     // STEP 3: Prepare - Create parent directories
     // ═══════════════════════════════════════════════════════════
     if let Some(parent) = trash_file_path.parent() {
-        fs::create_dir_all(parent).map_err(KopyError::Io)?;
+        fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
     }
 
     // Get file size before moving (for manifest)
-    let file_size = fs::metadata(target_path).map_err(KopyError::Io)?.len();
+    let file_size = fs::metadata(target_path)
+        .map_err(|e| map_file_error(target_path, e))?
+        .len();
 
     // ═══════════════════════════════════════════════════════════
     // STEP 4: Atomic Move with Fallback
@@ -139,11 +141,11 @@ pub fn move_to_trash(
             copy_file_atomic(target_path, &trash_file_path, config)?;
 
             // Copy succeeded - now safe to delete original
-            fs::remove_file(target_path).map_err(KopyError::Io)?;
+            fs::remove_file(target_path).map_err(|e| map_file_error(target_path, e))?;
         }
         Err(e) => {
             // Other errors - propagate up
-            return Err(KopyError::Io(e));
+            return Err(map_file_error(target_path, e));
         }
     }
 
@@ -154,7 +156,8 @@ pub fn move_to_trash(
 
     // Load existing manifest or create new one
     let mut manifest = if manifest_path.exists() {
-        let manifest_content = fs::read_to_string(&manifest_path).map_err(KopyError::Io)?;
+        let manifest_content =
+            fs::read_to_string(&manifest_path).map_err(|e| map_file_error(&manifest_path, e))?;
         serde_json::from_str(&manifest_content)
             .map_err(|e| KopyError::Validation(format!("Failed to parse MANIFEST.json: {}", e)))?
     } else {
@@ -173,7 +176,24 @@ pub fn move_to_trash(
     let manifest_json = serde_json::to_string_pretty(&manifest)
         .map_err(|e| KopyError::Validation(format!("Failed to serialize MANIFEST.json: {}", e)))?;
 
-    fs::write(&manifest_path, manifest_json).map_err(KopyError::Io)?;
+    fs::write(&manifest_path, manifest_json).map_err(|e| map_file_error(&manifest_path, e))?;
 
     Ok(())
+}
+
+fn map_file_error(path: &Path, error: Error) -> KopyError {
+    if matches!(error.kind(), ErrorKind::PermissionDenied) {
+        KopyError::PermissionDenied {
+            path: path.to_path_buf(),
+        }
+    } else if matches!(error.kind(), ErrorKind::StorageFull)
+        || matches!(error.raw_os_error(), Some(28 | 122))
+    {
+        KopyError::DiskFull {
+            available: 0,
+            needed: 1,
+        }
+    } else {
+        KopyError::Io(error)
+    }
 }
