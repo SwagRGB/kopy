@@ -3,4 +3,4 @@
 // Phase 1: Sequential walker
 mod walker;
 
-pub use walker::scan_directory;
+pub use walker::{scan_directory, ProgressCallback};

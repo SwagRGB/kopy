@@ -4,19 +4,47 @@ use crate::diff::generate_sync_plan;
 use crate::executor::{execute_plan, ExecutionEvent};
 use crate::scanner::scan_directory;
 use crate::types::KopyError;
+use crate::ui::ProgressReporter;
 use crate::Config;
+use std::sync::{Arc, Mutex};
 
 /// Run the sync operation
 pub fn run(config: Config) -> Result<(), KopyError> {
-    println!("Scanning source: {}", config.source.display());
-    let src_tree = scan_directory(&config.source, &config, None)?;
+    let reporter = Arc::new(Mutex::new(ProgressReporter::new()));
 
-    println!("Scanning destination: {}", config.destination.display());
+    if let Ok(progress) = reporter.lock() {
+        progress.start_scan("source");
+    }
+    let src_progress: crate::scanner::ProgressCallback = {
+        let reporter = Arc::clone(&reporter);
+        Box::new(move |files: u64, bytes: u64| {
+            if let Ok(progress) = reporter.lock() {
+                progress.update_scan("source", files, bytes);
+            }
+        })
+    };
+    let src_tree = scan_directory(&config.source, &config, Some(&src_progress))?;
+    if let Ok(progress) = reporter.lock() {
+        progress.finish_scan("source", src_tree.total_files, src_tree.total_size);
+        progress.start_scan("destination");
+    }
+
     let dest_tree = if config.destination.exists() {
-        scan_directory(&config.destination, &config, None)?
+        let dest_progress: crate::scanner::ProgressCallback = {
+            let reporter = Arc::clone(&reporter);
+            Box::new(move |files: u64, bytes: u64| {
+                if let Ok(progress) = reporter.lock() {
+                    progress.update_scan("destination", files, bytes);
+                }
+            })
+        };
+        scan_directory(&config.destination, &config, Some(&dest_progress))?
     } else {
         crate::types::FileTree::new(config.destination.clone())
     };
+    if let Ok(progress) = reporter.lock() {
+        progress.finish_scan("destination", dest_tree.total_files, dest_tree.total_size);
+    }
 
     let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
     print_plan_summary(&plan);
@@ -31,65 +59,59 @@ pub fn run(config: Config) -> Result<(), KopyError> {
         return Ok(());
     }
 
-    let progress = |event: &ExecutionEvent| match event {
-        ExecutionEvent::ActionStart {
-            index,
-            total,
-            action,
-            path,
-        } => {
-            let path_display = path
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "<none>".to_string());
-            println!("[{}/{}] {} {}", index, total, action, path_display);
-        }
-        ExecutionEvent::ActionSuccess {
-            index,
-            total,
-            action,
-            path,
-            bytes_copied,
-        } => {
-            let path_display = path
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "<none>".to_string());
-            if *bytes_copied > 0 {
-                println!(
-                    "[{}/{}] OK {} {} ({} bytes)",
-                    index, total, action, path_display, bytes_copied
-                );
-            } else {
-                println!("[{}/{}] OK {} {}", index, total, action, path_display);
+    if let Ok(mut progress) = reporter.lock() {
+        progress.start_transfer(plan.stats.total_files as u64);
+    }
+
+    let progress_cb = {
+        let reporter = Arc::clone(&reporter);
+        move |event: &ExecutionEvent| match event {
+            ExecutionEvent::ActionStart { action, path, .. } => {
+                if let Ok(progress) = reporter.lock() {
+                    progress.set_current_file(action, path.as_deref());
+                }
             }
-        }
-        ExecutionEvent::ActionError {
-            index,
-            total,
-            action,
-            path,
-            error,
-        } => {
-            let path_display = path
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "<none>".to_string());
-            println!(
-                "[{}/{}] ERROR {} {}: {}",
-                index, total, action, path_display, error
-            );
-        }
-        ExecutionEvent::Complete { stats } => {
-            println!(
-                "Execution complete: {} succeeded, {} failed, {} bytes copied.",
-                stats.completed_actions, stats.failed_actions, stats.bytes_copied
-            );
+            ExecutionEvent::ActionSuccess {
+                action,
+                bytes_copied,
+                ..
+            } => {
+                // Advance transfer file progress for successful copy/update actions,
+                // including zero-byte files.
+                if is_transfer_action(action) {
+                    if let Ok(mut progress) = reporter.lock() {
+                        progress.complete_transfer_file(*bytes_copied);
+                    }
+                }
+            }
+            ExecutionEvent::ActionError {
+                action,
+                path,
+                error,
+                ..
+            } => {
+                if let Ok(progress) = reporter.lock() {
+                    progress.transfer_error(action, path.as_deref(), &error.to_string());
+                }
+            }
+            ExecutionEvent::Complete { stats } => {
+                if let Ok(progress) = reporter.lock() {
+                    progress.finish_transfer(
+                        stats.completed_actions,
+                        stats.failed_actions,
+                        stats.bytes_copied,
+                    );
+                }
+            }
         }
     };
 
-    execute_plan(&plan, &config, Some(&progress))?;
+    execute_plan(&plan, &config, Some(&progress_cb))?;
     Ok(())
+}
+
+fn is_transfer_action(action: &str) -> bool {
+    matches!(action, "Copy" | "Update")
 }
 
 fn print_plan_summary(plan: &crate::diff::DiffPlan) {
@@ -121,5 +143,19 @@ fn print_plan_summary(plan: &crate::diff::DiffPlan) {
                 println!("  MOVE      {} -> {}", from.display(), to.display());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_transfer_action() {
+        assert!(is_transfer_action("Copy"));
+        assert!(is_transfer_action("Update"));
+        assert!(!is_transfer_action("Delete"));
+        assert!(!is_transfer_action("Skip"));
+        assert!(!is_transfer_action("Move"));
     }
 }
