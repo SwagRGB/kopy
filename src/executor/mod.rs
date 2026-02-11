@@ -143,13 +143,66 @@ fn execute_action(action: &SyncAction, config: &Config) -> Result<u64, KopyError
         SyncAction::CopyNew(entry) | SyncAction::Overwrite(entry) => {
             let src_path = config.source.join(&entry.path);
             let dest_path = config.destination.join(&entry.path);
-            copy_file_atomic(&src_path, &dest_path, config)
+            if entry.is_symlink {
+                copy_symlink(&src_path, &dest_path, entry)
+            } else {
+                copy_file_atomic(&src_path, &dest_path, config)
+            }
         }
         SyncAction::Delete(path) => execute_delete(path, config).map(|_| 0),
         SyncAction::Skip => Ok(0),
         SyncAction::Move { .. } => Err(KopyError::Validation(
             "Move action is not supported in Phase 1 executor".to_string(),
         )),
+    }
+}
+
+fn copy_symlink(
+    src_path: &std::path::Path,
+    dest_path: &std::path::Path,
+    entry: &crate::types::FileEntry,
+) -> Result<u64, KopyError> {
+    if let Some(parent) = dest_path.parent() {
+        fs::create_dir_all(parent).map_err(KopyError::Io)?;
+    }
+
+    if fs::symlink_metadata(dest_path).is_ok() {
+        remove_path_any(dest_path)?;
+    }
+
+    let target = match &entry.symlink_target {
+        Some(t) => t.clone(),
+        None => std::fs::read_link(src_path).map_err(KopyError::Io)?,
+    };
+
+    create_symlink(&target, dest_path)?;
+    Ok(0)
+}
+
+fn remove_path_any(path: &std::path::Path) -> Result<(), KopyError> {
+    let metadata = fs::symlink_metadata(path).map_err(KopyError::Io)?;
+    if metadata.file_type().is_dir() {
+        fs::remove_dir_all(path).map_err(KopyError::Io)
+    } else {
+        fs::remove_file(path).map_err(KopyError::Io)
+    }
+}
+
+#[cfg(unix)]
+fn create_symlink(target: &std::path::Path, link_path: &std::path::Path) -> Result<(), KopyError> {
+    std::os::unix::fs::symlink(target, link_path).map_err(KopyError::Io)
+}
+
+#[cfg(windows)]
+fn create_symlink(target: &std::path::Path, link_path: &std::path::Path) -> Result<(), KopyError> {
+    use std::os::windows::fs::{symlink_dir, symlink_file};
+
+    match symlink_file(target, link_path) {
+        Ok(()) => Ok(()),
+        Err(file_err) => match symlink_dir(target, link_path) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(KopyError::Io(file_err)),
+        },
     }
 }
 
@@ -346,6 +399,39 @@ mod tests {
         let stats = execute_plan(&plan, &config, None).expect("execute plan");
         assert_eq!(stats.failed_actions, 0);
         assert_eq!(stats.completed_actions, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_execute_plan_copy_new_preserves_symlink() {
+        let src = tempfile::tempdir().expect("create src tempdir");
+        let dst = tempfile::tempdir().expect("create dst tempdir");
+        let config = config_for(&src, &dst, DeleteMode::None);
+
+        fs::write(src.path().join("target.txt"), b"payload").expect("write target");
+        std::os::unix::fs::symlink("target.txt", src.path().join("link.txt"))
+            .expect("create symlink");
+
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::CopyNew(FileEntry::new_symlink(
+            PathBuf::from("link.txt"),
+            0,
+            UNIX_EPOCH + Duration::from_secs(2_000),
+            0o777,
+            PathBuf::from("target.txt"),
+        )));
+
+        let stats = execute_plan(&plan, &config, None).expect("execute plan");
+        assert_eq!(stats.failed_actions, 0);
+
+        let link_path = dst.path().join("link.txt");
+        let metadata = fs::symlink_metadata(&link_path).expect("symlink metadata");
+        assert!(
+            metadata.file_type().is_symlink(),
+            "destination should be symlink"
+        );
+        let target = fs::read_link(&link_path).expect("read link");
+        assert_eq!(target, PathBuf::from("target.txt"));
     }
 
     #[test]

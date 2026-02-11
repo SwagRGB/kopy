@@ -43,30 +43,20 @@ pub fn scan_directory(
     let mut scanned_count: u64 = 0;
     let mut scanned_bytes: u64 = 0;
 
-    // Build override patterns from CLI exclude patterns
-    let mut override_builder = ignore::overrides::OverrideBuilder::new(root_path);
-
-    for pattern in &config.exclude_patterns {
-        // Prefix with ! to negate (exclude) the pattern
-        // The ignore crate's OverrideBuilder uses ! for exclusion
-        let exclude_pattern = format!("!{}", pattern);
-        override_builder.add(&exclude_pattern).map_err(|e| {
-            KopyError::Config(format!("Invalid exclude pattern '{}': {}", pattern, e))
-        })?;
-    }
-
-    let overrides = override_builder
-        .build()
-        .map_err(|e| KopyError::Config(format!("Failed to build exclude overrides: {}", e)))?;
+    let exclude_patterns = compile_patterns(&config.exclude_patterns)?;
+    let include_patterns = compile_patterns(&config.include_patterns)?;
 
     // Build walker with ignore crate
     // Enable .gitignore, .ignore, .git/info/exclude support
     // Add custom .kopyignore file support
     // Apply CLI exclude patterns via overrides
     let walker = ignore::WalkBuilder::new(root_path)
-        .standard_filters(true) // Enable .gitignore, .ignore, .git/info/exclude
+        .hidden(false) // Do not silently skip dotfiles by default
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .ignore(true)
         .add_custom_ignore_filename(".kopyignore") // Add custom ignore file
-        .overrides(overrides) // Apply CLI patterns
         .build();
 
     for result in walker {
@@ -77,6 +67,25 @@ pub fn scan_directory(
                     Some(ft) => ft,
                     None => continue, // Skip if we can't determine file type
                 };
+
+                // Calculate relative path
+                let relative_path = match entry.path().strip_prefix(root_path) {
+                    Ok(p) => p.to_path_buf(),
+                    Err(_) => {
+                        eprintln!(
+                            "Warning: Failed to calculate relative path for {}. \
+                             This may indicate a symlink pointing outside the scan directory. File will be skipped.",
+                            entry.path().display()
+                        );
+                        continue;
+                    }
+                };
+
+                // Apply CLI exclude/include filtering:
+                // include patterns explicitly override exclude patterns.
+                if !should_include_path(&relative_path, &exclude_patterns, &include_patterns) {
+                    continue;
+                }
 
                 // Track directories
                 if file_type.is_dir() {
@@ -100,19 +109,6 @@ pub fn scan_directory(
                              Try checking file permissions or if the file was deleted during scan.",
                             entry.path().display(),
                             e
-                        );
-                        continue;
-                    }
-                };
-
-                // Calculate relative path
-                let relative_path = match entry.path().strip_prefix(root_path) {
-                    Ok(p) => p.to_path_buf(),
-                    Err(_) => {
-                        eprintln!(
-                            "Warning: Failed to calculate relative path for {}. \
-                             This may indicate a symlink pointing outside the scan directory. File will be skipped.",
-                            entry.path().display()
                         );
                         continue;
                     }
@@ -202,6 +198,33 @@ pub fn scan_directory(
     tree.set_scan_duration(duration);
 
     Ok(tree)
+}
+
+fn compile_patterns(patterns: &[String]) -> Result<Vec<glob::Pattern>, KopyError> {
+    patterns
+        .iter()
+        .map(|pattern| {
+            glob::Pattern::new(pattern)
+                .map_err(|e| KopyError::Config(format!("Invalid pattern '{}': {}", pattern, e)))
+        })
+        .collect()
+}
+
+fn should_include_path(
+    relative_path: &Path,
+    exclude_patterns: &[glob::Pattern],
+    include_patterns: &[glob::Pattern],
+) -> bool {
+    let excluded = exclude_patterns
+        .iter()
+        .any(|pattern| pattern.matches_path(relative_path));
+    if !excluded {
+        return true;
+    }
+
+    include_patterns
+        .iter()
+        .any(|pattern| pattern.matches_path(relative_path))
 }
 
 #[cfg(test)]
@@ -501,6 +524,60 @@ mod tests {
         assert!(
             !tree.contains(&PathBuf::from("debug.log")),
             "Should NOT contain debug.log"
+        );
+    }
+
+    #[test]
+    fn test_scans_hidden_files_by_default() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path();
+
+        fs::write(root.join(".env"), "SECRET=1").expect("Failed to create .env");
+        fs::write(root.join("visible.txt"), "ok").expect("Failed to create visible.txt");
+
+        let tree =
+            scan_directory(root, &Config::default(), None).expect("scan_directory should succeed");
+
+        assert!(
+            tree.contains(&PathBuf::from(".env")),
+            "Should contain .env by default"
+        );
+        assert!(
+            tree.contains(&PathBuf::from("visible.txt")),
+            "Should contain visible.txt"
+        );
+    }
+
+    #[test]
+    fn test_include_overrides_exclude() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path();
+
+        fs::write(root.join("important.log"), "keep").expect("Failed to create important.log");
+        fs::write(root.join("other.log"), "ignore").expect("Failed to create other.log");
+        fs::write(root.join("note.txt"), "keep").expect("Failed to create note.txt");
+
+        let config = Config {
+            source: root.to_path_buf(),
+            destination: PathBuf::from("/tmp/dest"),
+            exclude_patterns: vec!["*.log".to_string()],
+            include_patterns: vec!["important.log".to_string()],
+            ..Default::default()
+        };
+
+        let tree = scan_directory(root, &config, None).expect("scan_directory should succeed");
+
+        assert!(
+            tree.contains(&PathBuf::from("important.log")),
+            "important.log should be included"
+        );
+        assert!(
+            !tree.contains(&PathBuf::from("other.log")),
+            "other.log should remain excluded"
+        );
+        assert!(
+            tree.contains(&PathBuf::from("note.txt")),
+            "note.txt should be included"
         );
     }
 

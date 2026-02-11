@@ -2,7 +2,7 @@
 
 use super::types::DeleteMode;
 use clap::Parser;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 // ═══════════════════════════════════════════════════════════
 // CLI Argument Parsing
@@ -138,6 +138,19 @@ impl Config {
             ));
         }
 
+        // 3.1. Check for nested source/destination roots (prevents recursive growth)
+        let source_normalized = canonical_or_normalized(&self.source)?;
+        let destination_normalized = canonical_or_normalized(&self.destination)?;
+        if is_strict_descendant(&destination_normalized, &source_normalized)
+            || is_strict_descendant(&source_normalized, &destination_normalized)
+        {
+            return Err(super::types::KopyError::Config(format!(
+                "Source and destination cannot be nested. source='{}', destination='{}'",
+                self.source.display(),
+                self.destination.display()
+            )));
+        }
+
         // 4. Validate exclude patterns are valid globs
         for pattern in &self.exclude_patterns {
             glob::Pattern::new(pattern).map_err(|e| {
@@ -160,6 +173,44 @@ impl Config {
 
         Ok(())
     }
+}
+
+fn is_strict_descendant(path: &Path, potential_ancestor: &Path) -> bool {
+    path.starts_with(potential_ancestor) && path != potential_ancestor
+}
+
+fn canonical_or_normalized(path: &Path) -> Result<PathBuf, super::types::KopyError> {
+    if path.exists() {
+        return path.canonicalize().map_err(super::types::KopyError::Io);
+    }
+
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(super::types::KopyError::Io)?
+            .join(path)
+    };
+
+    Ok(normalize_path(&absolute))
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+
+    normalized
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -381,6 +432,47 @@ mod tests {
 
         let result = config.validate();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validation_fail_destination_nested_in_source() {
+        let src_dir = create_temp_dir();
+        let nested_dest = src_dir.path().join("backup");
+
+        let config = Config {
+            source: src_dir.path().to_path_buf(),
+            destination: nested_dest,
+            ..Default::default()
+        };
+
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(super::super::types::KopyError::Config(msg)) = result {
+            assert!(msg.contains("cannot be nested"));
+        } else {
+            panic!("Expected Config error");
+        }
+    }
+
+    #[test]
+    fn test_validation_fail_source_nested_in_destination() {
+        let dest_dir = create_temp_dir();
+        let nested_source = dest_dir.path().join("source");
+        fs::create_dir_all(&nested_source).expect("Failed to create nested source");
+
+        let config = Config {
+            source: nested_source,
+            destination: dest_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(super::super::types::KopyError::Config(msg)) = result {
+            assert!(msg.contains("cannot be nested"));
+        } else {
+            panic!("Expected Config error");
+        }
     }
 
     // ═══════════════════════════════════════════════════════════
