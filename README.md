@@ -54,29 +54,22 @@ kopy verify src/ dest/
 
 ### Phase 1: MVP (In Progress)
 
-**Goal:** Working local sync with core safety features
+`kopy` is currently a functional local sync CLI in active Phase 1 development.
 
-**Completed:**
-- [x] Project setup and architecture
-- [x] Core data structures (FileEntry, FileTree, SyncAction)
-- [x] Error handling system (KopyError with thiserror)
-- [x] Configuration system with validation
-- [x] CLI argument parsing with clap
-- [x] Directory scanner (sequential walker with ignore crate)
-- [x] Exclude pattern filtering (.gitignore and .kopyignore support)
-- [x] Diff engine with tree comparison
-  - [x] Metadata comparison (Tier 1)
-  - [x] Content hashing with Blake3 (Tier 2)
-  - [x] Delete detection
-  - [x] Plan statistics with time estimation
-- [x] Checksum mode (--checksum flag)
+**Implemented today (stable for local workflows):**
+- Local source → destination synchronization
+- Metadata and optional checksum (`--checksum`) comparison
+- Safe delete flow (`--delete` moves files to `.kopy_trash`)
+- Explicit permanent delete mode (`--delete-permanent`)
+- Include/exclude filtering (`--exclude`, `--include`) plus `.gitignore`/`.kopyignore`
+- Symlink-preserving sync behavior
+- End-to-end execution engine with continue-on-error handling
+- Real-time terminal progress (scan, transfer, current file, throughput)
 
-**In Progress:**
-- [ ] File operations (atomic copy, trash delete)
-- [ ] Executor (execute sync plan)
-- [ ] Progress UI (real-time progress bars)
-- [ ] Dry-run output formatting
-- [ ] Error summary reporting
+**Still in progress for Phase 1:**
+- Cleaner plan preview UX
+- More polished dry-run UX output
+- Rich grouped error summaries
 
 **Target:** `kopy src/ dest/` works reliably for local directories
 
@@ -113,7 +106,7 @@ cargo install --path .
 
 ## Usage (Preview)
 
-**Note:** These examples represent the planned interface. Not all features are implemented yet.
+**Note:** The commands below are implemented for local sync workflows (Phase 1). Remote/watch examples remain future-phase.
 
 ### Basic Synchronization
 
@@ -131,6 +124,20 @@ kopy photos/ /mnt/backup/photos/ --delete
 kopy photos/ /mnt/backup/photos/ --checksum
 ```
 
+### Progress Output (Current)
+
+```text
+⠋ Scanning source... 124 files | 42.6 MiB
+⠋ Scanning destination... 98 files | 37.1 MiB
+
+Plan:
+  Copy: 8  Update: 3  Delete: 2  Skip: 89
+  Total bytes to transfer: 12451840
+
+[=====>------------------------] 5/11 files | 8.1 MiB transferred | 5.2 MiB/s
+Current: Copy docs/report.pdf
+```
+
 ### Advanced Usage
 
 ```bash
@@ -140,10 +147,10 @@ kopy src/ dest/ --exclude "*.tmp" --exclude "node_modules/"
 # Include overrides exclude
 kopy src/ dest/ --exclude "*.log" --include "important.log"
 
-# Watch and auto-sync (Phase 3)
+# Watch and auto-sync (Phase 3, not implemented yet)
 kopy ~/code/project/ /mnt/dev-backup/project/ --watch
 
-# Remote sync (Phase 3)
+# Remote sync (Phase 3, not implemented yet)
 kopy ~/photos/ user@nas:/backup/photos/
 ```
 
