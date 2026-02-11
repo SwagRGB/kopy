@@ -54,7 +54,7 @@ pub fn run(config: Config) -> Result<(), KopyError> {
         return Ok(());
     }
 
-    if plan.actions.is_empty() {
+    if !has_executable_actions(&plan) {
         println!("Nothing to sync.");
         return Ok(());
     }
@@ -114,6 +114,10 @@ fn is_transfer_action(action: &str) -> bool {
     matches!(action, "Copy" | "Update")
 }
 
+fn has_executable_actions(plan: &crate::diff::DiffPlan) -> bool {
+    plan.actions.iter().any(|action| !action.is_skip())
+}
+
 fn print_plan_summary(plan: &crate::diff::DiffPlan) {
     println!("Plan:");
     println!(
@@ -149,6 +153,9 @@ fn print_plan_summary(plan: &crate::diff::DiffPlan) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{FileEntry, SyncAction};
+    use std::path::PathBuf;
+    use std::time::{Duration, UNIX_EPOCH};
 
     #[test]
     fn test_is_transfer_action() {
@@ -157,5 +164,26 @@ mod tests {
         assert!(!is_transfer_action("Delete"));
         assert!(!is_transfer_action("Skip"));
         assert!(!is_transfer_action("Move"));
+    }
+
+    #[test]
+    fn test_has_executable_actions_skip_only_is_false() {
+        let mut plan = crate::diff::DiffPlan::new();
+        plan.add_action(SyncAction::Skip);
+        plan.add_action(SyncAction::Skip);
+        assert!(!has_executable_actions(&plan));
+    }
+
+    #[test]
+    fn test_has_executable_actions_transfer_is_true() {
+        let mut plan = crate::diff::DiffPlan::new();
+        plan.add_action(SyncAction::Skip);
+        plan.add_action(SyncAction::CopyNew(FileEntry::new(
+            PathBuf::from("a.txt"),
+            0,
+            UNIX_EPOCH + Duration::from_secs(1_000),
+            0o644,
+        )));
+        assert!(has_executable_actions(&plan));
     }
 }

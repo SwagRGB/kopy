@@ -156,16 +156,20 @@ fn execute_action(action: &SyncAction, config: &Config) -> Result<u64, KopyError
 fn execute_delete(path: &PathBuf, config: &Config) -> Result<(), KopyError> {
     let dest_path = config.destination.join(path);
 
-    if !dest_path.exists() {
-        return Ok(());
-    }
-
     match config.delete_mode {
         DeleteMode::None => Ok(()),
-        DeleteMode::Trash => move_to_trash(&dest_path, &config.destination, path, config),
-        DeleteMode::Permanent => {
-            fs::remove_file(&dest_path).map_err(|e| map_delete_error(&dest_path, e))
+        DeleteMode::Trash => {
+            if !dest_path.exists() {
+                Ok(())
+            } else {
+                move_to_trash(&dest_path, &config.destination, path, config)
+            }
         }
+        DeleteMode::Permanent => match fs::remove_file(&dest_path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(map_delete_error(&dest_path, e)),
+        },
     }
 }
 
@@ -328,6 +332,20 @@ mod tests {
         let stats = execute_plan(&plan, &config, None).expect("execute plan");
         assert_eq!(stats.failed_actions, 0);
         assert!(!dst.path().join("old.txt").exists());
+    }
+
+    #[test]
+    fn test_execute_plan_delete_permanent_missing_file_is_ok() {
+        let src = tempfile::tempdir().expect("create src tempdir");
+        let dst = tempfile::tempdir().expect("create dst tempdir");
+        let config = config_for(&src, &dst, DeleteMode::Permanent);
+
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::Delete(PathBuf::from("missing.txt")));
+
+        let stats = execute_plan(&plan, &config, None).expect("execute plan");
+        assert_eq!(stats.failed_actions, 0);
+        assert_eq!(stats.completed_actions, 1);
     }
 
     #[test]
