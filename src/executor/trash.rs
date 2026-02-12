@@ -14,9 +14,7 @@ use std::fs;
 use std::io::{Error, ErrorKind};
 use std::path::Path;
 
-// ═══════════════════════════════════════════════════════════
 // Data Structures
-// ═══════════════════════════════════════════════════════════
 
 /// Represents a single deleted file in the trash
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,9 +54,7 @@ impl Default for TrashManifest {
     }
 }
 
-// ═══════════════════════════════════════════════════════════
 // Trash Operations
-// ═══════════════════════════════════════════════════════════
 
 /// Move a file to trash instead of permanently deleting
 ///
@@ -101,20 +97,14 @@ pub fn move_to_trash(
     relative_path: &Path,
     config: &Config,
 ) -> Result<(), KopyError> {
-    // ═══════════════════════════════════════════════════════════
     // STEP 1: Generate timestamp
-    // ═══════════════════════════════════════════════════════════
     let timestamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
 
-    // ═══════════════════════════════════════════════════════════
     // STEP 2: Resolve paths
-    // ═══════════════════════════════════════════════════════════
     let trash_root = dest_root.join(".kopy_trash").join(&timestamp);
     let trash_file_path = trash_root.join(relative_path);
 
-    // ═══════════════════════════════════════════════════════════
     // STEP 3: Prepare - Create parent directories
-    // ═══════════════════════════════════════════════════════════
     if let Some(parent) = trash_file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
     }
@@ -124,9 +114,7 @@ pub fn move_to_trash(
         .map_err(|e| map_file_error(target_path, e))?
         .len();
 
-    // ═══════════════════════════════════════════════════════════
     // STEP 4: Atomic Move with Fallback
-    // ═══════════════════════════════════════════════════════════
     // Try atomic rename first (fast, single syscall)
     match fs::rename(target_path, &trash_file_path) {
         Ok(()) => {
@@ -149,9 +137,7 @@ pub fn move_to_trash(
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // STEP 5: Log Metadata to MANIFEST.json
-    // ═══════════════════════════════════════════════════════════
     let manifest_path = trash_root.join("MANIFEST.json");
 
     // Load existing manifest or create new one

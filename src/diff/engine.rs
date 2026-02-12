@@ -297,9 +297,7 @@ mod tests {
         assert_eq!(plan.stats.total_bytes, 3000);
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Time Estimation Tests
-    // ═══════════════════════════════════════════════════════════
 
     #[test]
     fn test_estimate_duration_basic() {

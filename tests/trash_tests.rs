@@ -16,9 +16,7 @@ fn create_test_file(dir: &Path, name: &str, content: &str) -> std::path::PathBuf
     file_path
 }
 
-// ═══════════════════════════════════════════════════════════
 // Test 1: Basic trash move functionality
-// ═══════════════════════════════════════════════════════════
 
 #[test]
 fn test_trash_move_basic() {
@@ -67,9 +65,7 @@ fn test_trash_move_basic() {
     assert_eq!(content, "Hello, kopy!", "Trashed file content should match");
 }
 
-// ═══════════════════════════════════════════════════════════
 // Test 2: Manifest creation and validation
-// ═══════════════════════════════════════════════════════════
 
 #[test]
 fn test_trash_manifest() {
@@ -149,9 +145,7 @@ fn test_trash_manifest() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════
 // Test 3: Multiple files to same trash snapshot
-// ═══════════════════════════════════════════════════════════
 
 #[test]
 fn test_trash_multiple_files() {
@@ -204,9 +198,7 @@ fn test_trash_multiple_files() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════
 // Note: Cross-device fallback testing
-// ═══════════════════════════════════════════════════════════
 //
 // Testing cross-device behavior (rename fails -> copy+delete fallback)
 // is difficult without actual multiple filesystems. The logic is:

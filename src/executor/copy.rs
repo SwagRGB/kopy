@@ -40,16 +40,12 @@ use std::path::Path;
 pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64, KopyError> {
     let part_path = dest.with_extension("part");
     let copy_result = (|| -> Result<u64, KopyError> {
-        // ═══════════════════════════════════════════════════════════
         // STEP 1: Prepare - Create parent directories and .part path
-        // ═══════════════════════════════════════════════════════════
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
         }
 
-        // ═══════════════════════════════════════════════════════════
         // STEP 2: Copy - Stream from src to .part file
-        // ═══════════════════════════════════════════════════════════
         let mut src_file = File::open(src).map_err(|e| map_file_error(src, e))?;
         let mut part_file = File::create(&part_path).map_err(|e| map_file_error(dest, e))?;
 
@@ -72,17 +68,13 @@ pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64
             total_bytes += bytes_read as u64;
         }
 
-        // ═══════════════════════════════════════════════════════════
         // STEP 3: Flush - Force OS to write data to physical disk
-        // ═══════════════════════════════════════════════════════════
         part_file.sync_all().map_err(|e| map_file_error(dest, e))?;
 
         // Drop the file handle before rename (required on Windows)
         drop(part_file);
 
-        // ═══════════════════════════════════════════════════════════
         // STEP 4: Metadata - Preserve permissions and mtime
-        // ═══════════════════════════════════════════════════════════
         let src_metadata = fs::metadata(src).map_err(|e| map_file_error(src, e))?;
 
         // Copy permissions
@@ -97,9 +89,7 @@ pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64
         filetime::set_file_mtime(&part_path, filetime_mtime)
             .map_err(|e| map_file_error(dest, e))?;
 
-        // ═══════════════════════════════════════════════════════════
         // STEP 5: Commit - Atomic rename to final destination
-        // ═══════════════════════════════════════════════════════════
         // This is atomic on POSIX systems (single syscall)
         fs::rename(&part_path, dest).map_err(|e| map_file_error(dest, e))?;
 

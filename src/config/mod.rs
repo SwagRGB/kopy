@@ -4,9 +4,7 @@ use super::types::DeleteMode;
 use clap::Parser;
 use std::path::{Component, Path, PathBuf};
 
-// ═══════════════════════════════════════════════════════════
 // CLI Argument Parsing
-// ═══════════════════════════════════════════════════════════
 
 /// kopy - Modern file synchronization tool
 #[derive(Parser, Debug)]
@@ -44,9 +42,7 @@ pub struct Cli {
     pub include: Vec<String>,
 }
 
-// ═══════════════════════════════════════════════════════════
 // Configuration Struct
-// ═══════════════════════════════════════════════════════════
 
 /// Global configuration for kopy
 #[derive(Debug, Clone)]
@@ -213,9 +209,7 @@ fn normalize_path(path: &Path) -> PathBuf {
     normalized
 }
 
-// ═══════════════════════════════════════════════════════════
 // CLI → Config Conversion
-// ═══════════════════════════════════════════════════════════
 
 impl TryFrom<Cli> for Config {
     type Error = super::types::KopyError;
@@ -279,9 +273,7 @@ mod tests {
         file_path
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Test 1: Default Config has safe defaults
-    // ═══════════════════════════════════════════════════════════
     #[test]
     fn test_default_config() {
         let config = Config::default();
@@ -294,9 +286,7 @@ mod tests {
         assert!(config.include_patterns.is_empty());
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Test 2: Validation fails when source == destination
-    // ═══════════════════════════════════════════════════════════
     #[test]
     fn test_validation_fail_same_path() {
         let temp_dir = create_temp_dir();
@@ -318,9 +308,7 @@ mod tests {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Test 3: Validation fails when source doesn't exist
-    // ═══════════════════════════════════════════════════════════
     #[test]
     fn test_validation_source_not_exists() {
         let config = Config {
@@ -339,9 +327,7 @@ mod tests {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Test 4: Validation fails when source is a file (not directory)
-    // ═══════════════════════════════════════════════════════════
     #[test]
     fn test_validation_source_not_directory() {
         let temp_dir = create_temp_dir();
@@ -364,9 +350,7 @@ mod tests {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Test 5: Validation fails with invalid exclude glob pattern
-    // ═══════════════════════════════════════════════════════════
     #[test]
     fn test_validation_invalid_glob_exclude() {
         let src_dir = create_temp_dir();
@@ -389,9 +373,7 @@ mod tests {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Test 6: Validation fails with invalid include glob pattern
-    // ═══════════════════════════════════════════════════════════
     #[test]
     fn test_validation_invalid_glob_include() {
         let src_dir = create_temp_dir();
@@ -414,9 +396,7 @@ mod tests {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Test 7: Validation succeeds with valid configuration
-    // ═══════════════════════════════════════════════════════════
     #[test]
     fn test_validation_success() {
         let src_dir = create_temp_dir();
@@ -475,9 +455,7 @@ mod tests {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // CLI → Config Conversion Tests
-    // ═══════════════════════════════════════════════════════════
 
     #[test]
     fn test_cli_conversion_with_delete() {

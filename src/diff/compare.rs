@@ -27,16 +27,12 @@ use crate::Config;
 /// # Returns
 /// The appropriate `SyncAction` based on the comparison
 pub fn compare_files(src: &FileEntry, dest: &FileEntry, config: &Config) -> SyncAction {
-    // ═══════════════════════════════════════════════════════════
     // PRIORITY 1: Size check (cheap, always do this first)
-    // ═══════════════════════════════════════════════════════════
     if src.size != dest.size {
         return SyncAction::Overwrite(src.clone());
     }
 
-    // ═══════════════════════════════════════════════════════════
     // PRIORITY 2: Checksum mode (Tier 2 - content hashing)
-    // ═══════════════════════════════════════════════════════════
     if config.checksum_mode {
         // Compute full paths for hashing
         let src_path = config.source.join(&src.path);
@@ -74,9 +70,7 @@ pub fn compare_files(src: &FileEntry, dest: &FileEntry, config: &Config) -> Sync
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // PRIORITY 3: Metadata comparison (Tier 1 - legacy mode)
-    // ═══════════════════════════════════════════════════════════
     match src.mtime.cmp(&dest.mtime) {
         std::cmp::Ordering::Greater => {
             // Source is newer → update needed

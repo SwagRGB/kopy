@@ -33,9 +33,7 @@ use crate::Config;
 pub fn generate_sync_plan(src_tree: &FileTree, dest_tree: &FileTree, config: &Config) -> DiffPlan {
     let mut plan = DiffPlan::new();
 
-    // ═══════════════════════════════════════════════════════════
     // PHASE 1: Process files in source
-    // ═══════════════════════════════════════════════════════════
     for (path, src_entry) in src_tree.iter() {
         match dest_tree.get(path) {
             // ───────────────────────────────────────────────
@@ -61,9 +59,7 @@ pub fn generate_sync_plan(src_tree: &FileTree, dest_tree: &FileTree, config: &Co
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // PHASE 2: Process files only in destination (deletes)
-    // ═══════════════════════════════════════════════════════════
     if config.delete_mode != DeleteMode::None {
         for (path, _dest_entry) in dest_tree.iter() {
             // Check if this file exists in source
@@ -74,9 +70,7 @@ pub fn generate_sync_plan(src_tree: &FileTree, dest_tree: &FileTree, config: &Co
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
     // PHASE 3: Sorting for deterministic output
-    // ═══════════════════════════════════════════════════════════
     plan.sort_by_path();
 
     plan

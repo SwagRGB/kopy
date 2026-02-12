@@ -8,9 +8,7 @@ use kopy::Config;
 use std::path::PathBuf;
 use std::time::{Duration, UNIX_EPOCH};
 
-// ═══════════════════════════════════════════════════════════
 // Test Helpers
-// ═══════════════════════════════════════════════════════════
 
 fn create_test_entry(name: &str, size: u64, mtime_secs: u64) -> FileEntry {
     FileEntry::new(
@@ -38,9 +36,7 @@ fn create_test_config(delete_mode: DeleteMode) -> Config {
     }
 }
 
-// ═══════════════════════════════════════════════════════════
 // compare_files() Tests
-// ═══════════════════════════════════════════════════════════
 
 #[test]
 fn test_compare_size_mismatch() {
@@ -98,9 +94,7 @@ fn test_compare_identical() {
     assert!(action.is_skip(), "Identical files should Skip");
 }
 
-// ═══════════════════════════════════════════════════════════
 // generate_sync_plan() Tests
-// ═══════════════════════════════════════════════════════════
 
 #[test]
 fn test_diff_copy_new() {

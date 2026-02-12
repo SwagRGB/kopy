@@ -73,9 +73,7 @@ mod tests {
     use super::*;
     use std::io::{Error as IoError, ErrorKind};
 
-    // ═══════════════════════════════════════════════════════════
     // Automatic Conversion Tests (#[from] macro)
-    // ═══════════════════════════════════════════════════════════
 
     #[test]
     fn test_io_error_automatic_conversion() {
@@ -100,9 +98,7 @@ mod tests {
         assert!(matches!(result.unwrap_err(), KopyError::Io(_)));
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Variant Creation Tests
-    // ═══════════════════════════════════════════════════════════
 
     #[test]
     fn test_config_error() {
@@ -177,9 +173,7 @@ mod tests {
         assert!(error.is_recoverable());
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Helper Method Tests
-    // ═══════════════════════════════════════════════════════════
 
     #[test]
     fn test_is_recoverable() {
@@ -230,9 +224,7 @@ mod tests {
         assert!(!KopyError::DryRun.is_disk_space_error());
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Error Trait Tests
-    // ═══════════════════════════════════════════════════════════
 
     #[test]
     fn test_error_trait_implementation() {
@@ -252,9 +244,7 @@ mod tests {
         assert!(debug_str.contains("Validation"));
     }
 
-    // ═══════════════════════════════════════════════════════════
     // Result Type Usage Tests
-    // ═══════════════════════════════════════════════════════════
 
     #[test]
     fn test_result_propagation() {

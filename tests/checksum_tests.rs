@@ -11,9 +11,7 @@ use std::path::PathBuf;
 use std::time::{Duration, UNIX_EPOCH};
 use tempfile::TempDir;
 
-// ═══════════════════════════════════════════════════════════
 // Test Helpers
-// ═══════════════════════════════════════════════════════════
 
 fn create_test_config(checksum_mode: bool) -> Config {
     Config {
@@ -38,9 +36,7 @@ fn create_temp_file(dir: &TempDir, name: &str, content: &[u8]) -> PathBuf {
     path
 }
 
-// ═══════════════════════════════════════════════════════════
 // Hash Computation Tests
-// ═══════════════════════════════════════════════════════════
 
 #[test]
 fn test_compute_hash_basic() {
@@ -113,9 +109,7 @@ fn test_compute_hash_nonexistent_file() {
     assert!(result.is_err());
 }
 
-// ═══════════════════════════════════════════════════════════
 // Checksum Mode Integration Tests
-// ═══════════════════════════════════════════════════════════
 
 #[test]
 fn test_checksum_mismatch() {
