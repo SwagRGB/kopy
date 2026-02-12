@@ -7,6 +7,7 @@ use crate::types::KopyError;
 use crate::ui::ProgressReporter;
 use crate::Config;
 use indicatif::HumanBytes;
+use std::io::ErrorKind;
 use std::sync::{Arc, Mutex};
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -200,15 +201,72 @@ struct ErrorRecord {
     kind: &'static str,
     path: Option<PathBuf>,
     message: String,
+    suggestion: Option<String>,
 }
 
 impl ErrorRecord {
     fn new(path: Option<&std::path::Path>, error: &KopyError) -> Self {
+        let (message, suggestion) = humanize_error(error);
         Self {
             kind: error_kind_label(error),
             path: path.map(PathBuf::from),
-            message: error.to_string(),
+            message,
+            suggestion,
         }
+    }
+}
+
+fn humanize_error(error: &KopyError) -> (String, Option<String>) {
+    match error {
+        KopyError::Io(io) => match io.kind() {
+            ErrorKind::NotFound => (
+                "File or directory was not found".to_string(),
+                Some("Verify the path still exists and retry.".to_string()),
+            ),
+            ErrorKind::PermissionDenied => (
+                "Permission denied while accessing file".to_string(),
+                Some("Check file permissions or run with a user that has access.".to_string()),
+            ),
+            ErrorKind::AlreadyExists => (
+                "The destination path already exists as a file or directory".to_string(),
+                Some("Remove or rename the conflicting path, then retry.".to_string()),
+            ),
+            ErrorKind::WriteZero | ErrorKind::BrokenPipe | ErrorKind::UnexpectedEof => (
+                "File transfer was interrupted before completion".to_string(),
+                Some("Retry the sync and check disk/network stability.".to_string()),
+            ),
+            _ => (
+                format!("I/O operation failed: {}", io),
+                Some(
+                    "Retry the sync. If this keeps happening, check disk health and permissions."
+                        .to_string(),
+                ),
+            ),
+        },
+        KopyError::PermissionDenied { .. } => (
+            "Permission denied while accessing file".to_string(),
+            Some("Check file permissions or run with a user that has access.".to_string()),
+        ),
+        KopyError::DiskFull { .. } => (
+            "Not enough disk space to complete operation".to_string(),
+            Some("Free disk space on destination and retry.".to_string()),
+        ),
+        KopyError::ChecksumMismatch { .. } => (
+            "File content verification failed".to_string(),
+            Some(
+                "Re-run with --checksum and inspect source/destination file integrity.".to_string(),
+            ),
+        ),
+        KopyError::TransferInterrupted { .. } => (
+            "File transfer was interrupted before completion".to_string(),
+            Some("Retry the sync. If this keeps happening, check system stability.".to_string()),
+        ),
+        KopyError::Config(msg) | KopyError::Validation(msg) => (msg.clone(), None),
+        KopyError::SshError(msg) => (
+            msg.clone(),
+            Some("Check SSH connectivity and credentials.".to_string()),
+        ),
+        KopyError::DryRun => ("Dry-run mode: no changes were made".to_string(), None),
     }
 }
 
@@ -237,10 +295,12 @@ fn format_error_summary(records: &[ErrorRecord]) -> String {
     for (kind, items) in groups {
         lines.push(format!("  {} ({}):", kind, items.len()));
         for record in items.iter().take(3) {
+            lines.push(format!("    - {}", record.message));
             if let Some(path) = &record.path {
-                lines.push(format!("    - {} ({})", record.message, path.display()));
-            } else {
-                lines.push(format!("    - {}", record.message));
+                lines.push(format!("      Path: {}", path.display()));
+            }
+            if let Some(suggestion) = &record.suggestion {
+                lines.push(format!("      Try: {}", suggestion));
             }
         }
         if items.len() > 3 {
@@ -369,17 +429,24 @@ mod tests {
             ErrorRecord {
                 kind: "Permission denied",
                 path: Some(PathBuf::from("a.txt")),
-                message: "Permission denied: a.txt".to_string(),
+                message: "Permission denied while accessing file".to_string(),
+                suggestion: Some(
+                    "Check file permissions or run with a user that has access.".to_string(),
+                ),
             },
             ErrorRecord {
                 kind: "Disk full",
                 path: Some(PathBuf::from("b.txt")),
-                message: "Disk full: 1 bytes available, 2 bytes needed".to_string(),
+                message: "Not enough disk space to complete operation".to_string(),
+                suggestion: Some("Free disk space on destination and retry.".to_string()),
             },
             ErrorRecord {
                 kind: "Permission denied",
                 path: Some(PathBuf::from("c.txt")),
-                message: "Permission denied: c.txt".to_string(),
+                message: "Permission denied while creating output file".to_string(),
+                suggestion: Some(
+                    "Check file permissions or run with a user that has access.".to_string(),
+                ),
             },
         ];
 
@@ -387,5 +454,29 @@ mod tests {
         assert!(summary.contains("Error summary:"));
         assert!(summary.contains("Permission denied (2):"));
         assert!(summary.contains("Disk full (1):"));
+        assert!(summary.contains("Path: a.txt"));
+        assert!(summary.contains("Try: Check file permissions or run with a user that has access."));
+    }
+
+    #[test]
+    fn test_error_record_io_error_is_plain_english_with_suggestion() {
+        let err = KopyError::Io(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "File exists",
+        ));
+        let record = ErrorRecord::new(Some(std::path::Path::new("nested/file.txt")), &err);
+
+        assert_eq!(record.kind, "I/O error");
+        assert!(record
+            .message
+            .contains("destination path already exists as a file"));
+        assert!(record
+            .path
+            .as_ref()
+            .is_some_and(|p| p == &PathBuf::from("nested/file.txt")));
+        assert!(record
+            .suggestion
+            .as_deref()
+            .is_some_and(|s| s.contains("Remove or rename the conflicting path")));
     }
 }
