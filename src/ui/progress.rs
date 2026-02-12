@@ -103,12 +103,21 @@ impl ProgressReporter {
     }
 
     /// Finalize transfer phase.
-    pub fn finish_transfer(&self, succeeded: usize, failed: usize, bytes: u64) {
+    pub fn finish_transfer(
+        &self,
+        succeeded: usize,
+        failed: usize,
+        bytes: u64,
+        transfers: usize,
+        deletes: usize,
+    ) {
         let throughput = self.current_throughput_bps();
         self.transfer_bar.finish_with_message(format!(
-            "Transfer complete: {} succeeded, {} failed | {} total | {}/s",
+            "Actions complete: {} succeeded, {} failed | {} transfers, {} deletes | {} total | {}/s",
             succeeded,
             failed,
+            transfers,
+            deletes,
             HumanBytes(bytes),
             HumanBytes(throughput)
         ));

@@ -65,6 +65,8 @@ pub fn run(config: Config) -> Result<(), KopyError> {
         progress.start_transfer(plan.stats.total_files as u64);
     }
 
+    let transfer_total = plan.stats.total_files as usize;
+    let delete_total = plan.stats.delete_count;
     let progress_cb = {
         let reporter = Arc::clone(&reporter);
         move |event: &ExecutionEvent| match event {
@@ -102,6 +104,8 @@ pub fn run(config: Config) -> Result<(), KopyError> {
                         stats.completed_actions,
                         stats.failed_actions,
                         stats.bytes_copied,
+                        transfer_total,
+                        delete_total,
                     );
                 }
             }
