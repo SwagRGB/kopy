@@ -17,6 +17,16 @@ fn create_test_entry(name: &str, size: u64, mtime_secs: u64) -> FileEntry {
     )
 }
 
+fn create_test_symlink_entry(name: &str, target: &str, mtime_secs: u64) -> FileEntry {
+    FileEntry::new_symlink(
+        PathBuf::from(name),
+        0,
+        UNIX_EPOCH + Duration::from_secs(mtime_secs),
+        0o777,
+        PathBuf::from(target),
+    )
+}
+
 fn create_test_config(delete_mode: DeleteMode) -> Config {
     Config {
         source: PathBuf::from("/src"),
@@ -88,6 +98,26 @@ fn test_compare_identical() {
     let action = compare_files(&src, &dest, &config);
 
     assert!(action.is_skip(), "Identical files should Skip");
+}
+
+#[test]
+fn test_compare_symlink_target_mismatch() {
+    let src = create_test_symlink_entry("link", "a.txt", 1000);
+    let dest = create_test_symlink_entry("link", "b.txt", 2000);
+    let config = create_test_config(DeleteMode::None);
+
+    let action = compare_files(&src, &dest, &config);
+    assert!(action.is_overwrite());
+}
+
+#[test]
+fn test_compare_file_kind_mismatch_symlink_vs_regular() {
+    let src = create_test_symlink_entry("entry", "real.txt", 1000);
+    let dest = create_test_entry("entry", 0, 1000);
+    let config = create_test_config(DeleteMode::None);
+
+    let action = compare_files(&src, &dest, &config);
+    assert!(action.is_overwrite());
 }
 
 #[test]

@@ -127,6 +127,13 @@ impl Config {
             )));
         }
 
+        if self.destination.exists() && !self.destination.is_dir() {
+            return Err(super::types::KopyError::Config(format!(
+                "Destination path must be a directory if it exists: {:?}",
+                self.destination
+            )));
+        }
+
         // 3. Check source != destination (prevent infinite recursion)
         if self.source == self.destination {
             return Err(super::types::KopyError::Config(
@@ -347,6 +354,28 @@ mod tests {
 
         if let Err(super::super::types::KopyError::Config(msg)) = result {
             assert!(msg.contains("must be a directory"));
+        } else {
+            panic!("Expected Config error");
+        }
+    }
+
+    #[test]
+    fn test_validation_destination_existing_file_is_rejected() {
+        let src_dir = create_temp_dir();
+        let dest_dir = create_temp_dir();
+        let dest_file = create_temp_file(&dest_dir, "dest.txt");
+
+        let config = Config {
+            source: src_dir.path().to_path_buf(),
+            destination: dest_file,
+            ..Default::default()
+        };
+
+        let result = config.validate();
+        assert!(result.is_err());
+
+        if let Err(super::super::types::KopyError::Config(msg)) = result {
+            assert!(msg.contains("Destination path must be a directory"));
         } else {
             panic!("Expected Config error");
         }

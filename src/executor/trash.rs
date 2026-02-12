@@ -97,14 +97,21 @@ pub fn move_to_trash(
         fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
     }
 
-    let file_size = fs::metadata(target_path)
-        .map_err(|e| map_file_error(target_path, e))?
-        .len();
+    let target_metadata =
+        fs::symlink_metadata(target_path).map_err(|e| map_file_error(target_path, e))?;
+    let file_size = target_metadata.len();
 
     match fs::rename(target_path, &trash_file_path) {
         Ok(()) => {}
         Err(e) if e.kind() == ErrorKind::CrossesDevices => {
-            copy_file_atomic(target_path, &trash_file_path, config)?;
+            if target_metadata.file_type().is_symlink() {
+                let target =
+                    fs::read_link(target_path).map_err(|e| map_file_error(target_path, e))?;
+                create_symlink(&target, &trash_file_path)
+                    .map_err(|e| map_file_error(&trash_file_path, e))?;
+            } else {
+                copy_file_atomic(target_path, &trash_file_path, config)?;
+            }
             fs::remove_file(target_path).map_err(|e| map_file_error(target_path, e))?;
         }
         Err(e) => return Err(map_file_error(target_path, e)),
@@ -151,5 +158,22 @@ fn map_file_error(path: &Path, error: Error) -> KopyError {
         }
     } else {
         KopyError::Io(error)
+    }
+}
+
+#[cfg(unix)]
+fn create_symlink(target: &Path, link_path: &Path) -> Result<(), Error> {
+    std::os::unix::fs::symlink(target, link_path)
+}
+
+#[cfg(windows)]
+fn create_symlink(target: &Path, link_path: &Path) -> Result<(), Error> {
+    use std::os::windows::fs::{symlink_dir, symlink_file};
+    match symlink_file(target, link_path) {
+        Ok(()) => Ok(()),
+        Err(file_err) => match symlink_dir(target, link_path) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(file_err),
+        },
     }
 }

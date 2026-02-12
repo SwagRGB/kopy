@@ -84,6 +84,10 @@ pub fn scan_directory(
                     continue;
                 }
 
+                if is_destination_internal_trash(root_path, config, &relative_path) {
+                    continue;
+                }
+
                 if file_type.is_dir() {
                     tree.increment_dirs();
                     continue;
@@ -205,6 +209,10 @@ fn should_include_path(
     include_patterns
         .iter()
         .any(|pattern| pattern.matches_path(relative_path))
+}
+
+fn is_destination_internal_trash(root_path: &Path, config: &Config, relative_path: &Path) -> bool {
+    root_path == config.destination && relative_path.starts_with(".kopy_trash")
 }
 
 #[cfg(test)]
@@ -559,6 +567,26 @@ mod tests {
             tree.contains(&PathBuf::from("note.txt")),
             "note.txt should be included"
         );
+    }
+
+    #[test]
+    fn test_destination_scan_excludes_kopy_trash() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root_path = temp_dir.path();
+
+        fs::create_dir_all(root_path.join(".kopy_trash/snapshot")).expect("Failed to create trash");
+        fs::write(root_path.join(".kopy_trash/snapshot/deleted.txt"), b"old").expect("write trash");
+        fs::write(root_path.join("regular.txt"), b"keep").expect("write regular");
+
+        let config = Config {
+            source: PathBuf::from("/src"),
+            destination: root_path.to_path_buf(),
+            ..Config::default()
+        };
+
+        let tree = scan_directory(root_path, &config, None).expect("scan directory");
+        assert!(tree.contains(&PathBuf::from("regular.txt")));
+        assert!(!tree.contains(&PathBuf::from(".kopy_trash/snapshot/deleted.txt")));
     }
 
     #[test]

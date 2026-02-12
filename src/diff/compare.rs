@@ -27,6 +27,18 @@ use crate::Config;
 /// # Returns
 /// The appropriate `SyncAction` based on the comparison
 pub fn compare_files(src: &FileEntry, dest: &FileEntry, config: &Config) -> SyncAction {
+    if src.is_symlink != dest.is_symlink {
+        return SyncAction::Overwrite(src.clone());
+    }
+
+    if src.is_symlink && dest.is_symlink {
+        return if src.symlink_target == dest.symlink_target {
+            SyncAction::Skip
+        } else {
+            SyncAction::Overwrite(src.clone())
+        };
+    }
+
     // PRIORITY 1: Size check (cheap, always do this first)
     if src.size != dest.size {
         return SyncAction::Overwrite(src.clone());

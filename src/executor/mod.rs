@@ -222,7 +222,7 @@ fn execute_delete(path: &PathBuf, config: &Config) -> Result<(), KopyError> {
     match config.delete_mode {
         DeleteMode::None => Ok(()),
         DeleteMode::Trash => {
-            if !dest_path.exists() {
+            if fs::symlink_metadata(&dest_path).is_err() {
                 Ok(())
             } else {
                 move_to_trash(&dest_path, &config.destination, path, config)
@@ -409,6 +409,25 @@ mod tests {
         let stats = execute_plan(&plan, &config, None).expect("execute plan");
         assert_eq!(stats.failed_actions, 0);
         assert_eq!(stats.completed_actions, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_execute_plan_delete_trash_broken_symlink() {
+        let src = tempfile::tempdir().expect("create src tempdir");
+        let dst = tempfile::tempdir().expect("create dst tempdir");
+        let config = config_for(&src, &dst, DeleteMode::Trash);
+
+        std::os::unix::fs::symlink("missing-target.txt", dst.path().join("broken-link"))
+            .expect("create broken symlink");
+
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::Delete(PathBuf::from("broken-link")));
+
+        let stats = execute_plan(&plan, &config, None).expect("execute plan");
+        assert_eq!(stats.failed_actions, 0);
+        assert!(fs::symlink_metadata(dst.path().join("broken-link")).is_err());
+        assert!(dst.path().join(".kopy_trash").exists());
     }
 
     #[test]
