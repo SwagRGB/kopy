@@ -8,6 +8,7 @@ use crate::ui::ProgressReporter;
 use crate::Config;
 use indicatif::HumanBytes;
 use std::sync::{Arc, Mutex};
+use std::{collections::BTreeMap, path::PathBuf};
 
 /// Run the sync operation
 pub fn run(config: Config) -> Result<(), KopyError> {
@@ -67,8 +68,10 @@ pub fn run(config: Config) -> Result<(), KopyError> {
 
     let transfer_total = plan.stats.total_files as usize;
     let delete_total = plan.stats.delete_count;
+    let error_records: Arc<Mutex<Vec<ErrorRecord>>> = Arc::new(Mutex::new(Vec::new()));
     let progress_cb = {
         let reporter = Arc::clone(&reporter);
+        let error_records = Arc::clone(&error_records);
         move |event: &ExecutionEvent| match event {
             ExecutionEvent::ActionStart { action, path, .. } => {
                 if let Ok(progress) = reporter.lock() {
@@ -97,6 +100,9 @@ pub fn run(config: Config) -> Result<(), KopyError> {
                 if let Ok(progress) = reporter.lock() {
                     progress.transfer_error(action, path.as_deref(), &error.to_string());
                 }
+                if let Ok(mut records) = error_records.lock() {
+                    records.push(ErrorRecord::new(path.as_deref(), error));
+                }
             }
             ExecutionEvent::Complete { stats } => {
                 if let Ok(progress) = reporter.lock() {
@@ -112,7 +118,14 @@ pub fn run(config: Config) -> Result<(), KopyError> {
         }
     };
 
-    execute_plan(&plan, &config, Some(&progress_cb))?;
+    let result = execute_plan(&plan, &config, Some(&progress_cb));
+    if let Ok(records) = error_records.lock() {
+        if !records.is_empty() {
+            println!("{}", format_error_summary(&records));
+        }
+    }
+
+    result?;
     Ok(())
 }
 
@@ -179,6 +192,61 @@ fn format_dry_run_actions(plan: &crate::diff::DiffPlan) -> String {
         lines.push(format!("  ({skipped} unchanged file(s) omitted)"));
     }
 
+    lines.join("\n")
+}
+
+#[derive(Debug)]
+struct ErrorRecord {
+    kind: &'static str,
+    path: Option<PathBuf>,
+    message: String,
+}
+
+impl ErrorRecord {
+    fn new(path: Option<&std::path::Path>, error: &KopyError) -> Self {
+        Self {
+            kind: error_kind_label(error),
+            path: path.map(PathBuf::from),
+            message: error.to_string(),
+        }
+    }
+}
+
+fn error_kind_label(error: &KopyError) -> &'static str {
+    match error {
+        KopyError::Io(_) => "I/O error",
+        KopyError::Config(_) => "Configuration error",
+        KopyError::Validation(_) => "Validation error",
+        KopyError::PermissionDenied { .. } => "Permission denied",
+        KopyError::DiskFull { .. } => "Disk full",
+        KopyError::ChecksumMismatch { .. } => "Checksum mismatch",
+        KopyError::TransferInterrupted { .. } => "Transfer interrupted",
+        KopyError::SshError(_) => "SSH error",
+        KopyError::DryRun => "Dry run",
+    }
+}
+
+fn format_error_summary(records: &[ErrorRecord]) -> String {
+    let mut groups: BTreeMap<&'static str, Vec<&ErrorRecord>> = BTreeMap::new();
+    for record in records {
+        groups.entry(record.kind).or_default().push(record);
+    }
+
+    let mut lines = Vec::new();
+    lines.push("Error summary:".to_string());
+    for (kind, items) in groups {
+        lines.push(format!("  {} ({}):", kind, items.len()));
+        for record in items.iter().take(3) {
+            if let Some(path) = &record.path {
+                lines.push(format!("    - {} ({})", record.message, path.display()));
+            } else {
+                lines.push(format!("    - {}", record.message));
+            }
+        }
+        if items.len() > 3 {
+            lines.push(format!("    - ... {} more", items.len() - 3));
+        }
+    }
     lines.join("\n")
 }
 
@@ -293,5 +361,31 @@ mod tests {
         let plan = DiffPlan::new();
         let preview = format_dry_run_actions(&plan);
         assert!(preview.contains("(no planned actions)"));
+    }
+
+    #[test]
+    fn test_format_error_summary_groups_by_kind() {
+        let records = vec![
+            ErrorRecord {
+                kind: "Permission denied",
+                path: Some(PathBuf::from("a.txt")),
+                message: "Permission denied: a.txt".to_string(),
+            },
+            ErrorRecord {
+                kind: "Disk full",
+                path: Some(PathBuf::from("b.txt")),
+                message: "Disk full: 1 bytes available, 2 bytes needed".to_string(),
+            },
+            ErrorRecord {
+                kind: "Permission denied",
+                path: Some(PathBuf::from("c.txt")),
+                message: "Permission denied: c.txt".to_string(),
+            },
+        ];
+
+        let summary = format_error_summary(&records);
+        assert!(summary.contains("Error summary:"));
+        assert!(summary.contains("Permission denied (2):"));
+        assert!(summary.contains("Disk full (1):"));
     }
 }
