@@ -7,7 +7,6 @@ use std::path::Path;
 
 /// Compute Blake3 hash of a file
 ///
-/// This implements the lazy hash computation algorithm from implementation_plan.md.
 /// The file is streamed in 64KB chunks for memory efficiency.
 ///
 /// # Arguments
@@ -26,26 +25,22 @@ use std::path::Path;
 /// # Ok::<(), kopy::types::KopyError>(())
 /// ```
 pub fn compute_hash(file_path: &Path) -> Result<[u8; 32], KopyError> {
-    // Open file for reading
     let mut file = File::open(file_path).map_err(KopyError::Io)?;
 
-    // Create Blake3 hasher
     let mut hasher = blake3::Hasher::new();
 
-    // Stream file in 64KB chunks (memory efficient)
     let mut buffer = vec![0u8; 64 * 1024];
 
     loop {
         let bytes_read = file.read(&mut buffer).map_err(KopyError::Io)?;
 
         if bytes_read == 0 {
-            break; // EOF
+            break;
         }
 
         hasher.update(&buffer[0..bytes_read]);
     }
 
-    // Finalize and return hash
     let hash = hasher.finalize();
     Ok(*hash.as_bytes())
 }

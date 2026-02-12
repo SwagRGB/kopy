@@ -6,22 +6,8 @@ use crate::Config;
 
 /// Generate a sync plan by comparing source and destination trees
 ///
-/// This implements Algorithm 2 from implementation_plan.md:
-///
-/// **Phase 1: Process files in source**
-/// - For each file in source tree:
-///   - If missing in dest → CopyNew
-///   - If present in dest → compare_files() to determine action
-///
-/// **Phase 2: Process files only in destination (delete detection)**
-/// - For each file in dest tree:
-///   - If missing in source (orphan):
-///     - Check delete_mode:
-///       - None → skip
-///       - Trash or Permanent → Delete
-///
-/// **Phase 3: Sorting**
-/// - Sort all actions by path for deterministic output
+/// The plan includes copy/update/skip actions for source entries and optional delete
+/// actions for destination orphans when deletes are enabled.
 ///
 /// # Arguments
 /// * `src_tree` - Source directory tree

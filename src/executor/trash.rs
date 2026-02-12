@@ -1,9 +1,7 @@
 //! Trash-based delete operations
 //!
-//! Implements Algorithm 4 from implementation_plan.md:
-//! - Move files to `.kopy_trash/<TIMESTAMP>/` preserving relative paths
-//! - Atomic moves when possible, with copy+delete fallback for cross-device
-//! - Log metadata in MANIFEST.json for audit trails
+//! Deleted files are moved under `.kopy_trash/<timestamp>/` with original
+//! relative paths preserved. A manifest is updated for recovery/audit.
 
 use crate::executor::copy::copy_file_atomic;
 use crate::types::KopyError;

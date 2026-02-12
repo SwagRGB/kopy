@@ -34,7 +34,7 @@ pub enum KopyError {
     #[error("Transfer interrupted: {path} at offset {offset} bytes")]
     TransferInterrupted { path: PathBuf, offset: u64 },
 
-    /// SSH connection error (Phase 3)
+    /// SSH connection error.
     #[error("SSH connection failed: {0}")]
     SshError(String),
 

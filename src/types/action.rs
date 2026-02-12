@@ -15,7 +15,7 @@ pub enum SyncAction {
     /// Delete file (exists in dest, missing in src)
     Delete(PathBuf),
 
-    /// Move/rename detection (Phase 3 - optional optimization)
+    /// Move/rename action.
     Move { from: PathBuf, to: PathBuf },
 
     /// Skip (files identical)
@@ -38,7 +38,7 @@ impl SyncAction {
         matches!(self, SyncAction::Delete(_))
     }
 
-    /// Check if this action is Move (Phase 3)
+    /// Check if this action is Move.
     pub fn is_move(&self) -> bool {
         matches!(self, SyncAction::Move { .. })
     }

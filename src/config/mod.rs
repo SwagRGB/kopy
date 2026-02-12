@@ -4,8 +4,6 @@ use super::types::DeleteMode;
 use clap::Parser;
 use std::path::{Component, Path, PathBuf};
 
-// CLI Argument Parsing
-
 /// kopy - Modern file synchronization tool
 #[derive(Parser, Debug)]
 #[command(name = "kopy")]
@@ -42,8 +40,6 @@ pub struct Cli {
     pub include: Vec<String>,
 }
 
-// Configuration Struct
-
 /// Global configuration for kopy
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -68,16 +64,16 @@ pub struct Config {
     /// Include patterns (overrides excludes)
     pub include_patterns: Vec<String>,
 
-    /// Number of worker threads (Phase 2)
+    /// Number of worker threads.
     pub threads: usize,
 
     /// Bandwidth limit (bytes/sec, None = unlimited)
     pub bandwidth_limit: Option<u64>,
 
-    /// Backup directory for snapshots (Phase 3)
+    /// Backup directory for snapshots.
     pub backup_dir: Option<PathBuf>,
 
-    /// Watch mode enabled? (Phase 3)
+    /// Watch mode enabled.
     pub watch: bool,
 
     /// Watch settle time (seconds)
@@ -94,7 +90,7 @@ impl Default for Config {
             delete_mode: DeleteMode::None,
             exclude_patterns: Vec::new(),
             include_patterns: Vec::new(),
-            threads: 4, // Phase 1: hardcoded, Phase 2: use num_cpus
+            threads: 4,
             bandwidth_limit: None,
             backup_dir: None,
             watch: false,
@@ -282,12 +278,10 @@ mod tests {
         file_path
     }
 
-    // Test 1: Default Config has safe defaults
     #[test]
     fn test_default_config() {
         let config = Config::default();
 
-        // Verify safe defaults
         assert_eq!(config.delete_mode, DeleteMode::None);
         assert!(!config.dry_run);
         assert!(!config.checksum_mode);
@@ -295,7 +289,6 @@ mod tests {
         assert!(config.include_patterns.is_empty());
     }
 
-    // Test 2: Validation fails when source == destination
     #[test]
     fn test_validation_fail_same_path() {
         let temp_dir = create_temp_dir();
@@ -317,7 +310,6 @@ mod tests {
         }
     }
 
-    // Test 3: Validation fails when source doesn't exist
     #[test]
     fn test_validation_source_not_exists() {
         let config = Config {
@@ -336,7 +328,6 @@ mod tests {
         }
     }
 
-    // Test 4: Validation fails when source is a file (not directory)
     #[test]
     fn test_validation_source_not_directory() {
         let temp_dir = create_temp_dir();
@@ -381,7 +372,6 @@ mod tests {
         }
     }
 
-    // Test 5: Validation fails with invalid exclude glob pattern
     #[test]
     fn test_validation_invalid_glob_exclude() {
         let src_dir = create_temp_dir();
@@ -390,7 +380,7 @@ mod tests {
         let config = Config {
             source: src_dir.path().to_path_buf(),
             destination: dest_dir.path().to_path_buf(),
-            exclude_patterns: vec!["[invalid".to_string()], // Invalid glob pattern
+            exclude_patterns: vec!["[invalid".to_string()],
             ..Default::default()
         };
 
@@ -404,7 +394,6 @@ mod tests {
         }
     }
 
-    // Test 6: Validation fails with invalid include glob pattern
     #[test]
     fn test_validation_invalid_glob_include() {
         let src_dir = create_temp_dir();
@@ -413,7 +402,7 @@ mod tests {
         let config = Config {
             source: src_dir.path().to_path_buf(),
             destination: dest_dir.path().to_path_buf(),
-            include_patterns: vec!["**[".to_string()], // Invalid glob pattern
+            include_patterns: vec!["**[".to_string()],
             ..Default::default()
         };
 
@@ -427,7 +416,6 @@ mod tests {
         }
     }
 
-    // Test 7: Validation succeeds with valid configuration
     #[test]
     fn test_validation_success() {
         let src_dir = create_temp_dir();
@@ -485,8 +473,6 @@ mod tests {
             panic!("Expected Config error");
         }
     }
-
-    // CLI → Config Conversion Tests
 
     #[test]
     fn test_cli_conversion_with_delete() {

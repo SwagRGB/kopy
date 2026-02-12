@@ -83,10 +83,7 @@ fn test_compare_dest_newer() {
 
     let action = compare_files(&src, &dest, &config);
 
-    assert!(
-        action.is_skip(),
-        "Dest newer should Skip (Phase 1 conflict avoidance)"
-    );
+    assert!(action.is_skip(), "Dest newer should skip");
 }
 
 #[test]

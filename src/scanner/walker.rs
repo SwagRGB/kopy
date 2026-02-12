@@ -1,4 +1,4 @@
-//! Sequential directory walker (Phase 1)
+//! Directory walker
 
 use crate::config::Config;
 use crate::types::{FileEntry, FileTree, KopyError};

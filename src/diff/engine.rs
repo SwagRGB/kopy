@@ -42,7 +42,7 @@ impl DiffPlan {
                 self.stats.skip_count += 1;
             }
             SyncAction::Move { .. } => {
-                // Phase 3 feature - not counted in Phase 1
+                // Move actions are not counted as transfers here.
             }
         }
 

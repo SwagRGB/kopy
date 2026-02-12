@@ -8,11 +8,8 @@ use std::path::Path;
 
 /// Copy a file atomically using the write-then-rename strategy
 ///
-/// This implements Algorithm 3 from implementation_plan.md:
-/// 1. Write to temporary `.part` file
-/// 2. Flush and sync to disk
-/// 3. Preserve metadata (permissions, mtime)
-/// 4. Atomic rename to final destination
+/// Data is written to a temporary `.part` file, synced, metadata is copied, and
+/// then renamed into place.
 ///
 /// # Arguments
 /// * `src` - Source file path
@@ -86,8 +83,7 @@ pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64
         Ok(total_bytes)
     })();
 
-    // Partial write recovery for Phase 1:
-    // if copy fails after creating a .part file, clean it up so failed runs don't leave junk.
+    // Remove partially written temp file on failure.
     if copy_result.is_err() && part_path.exists() {
         let _ = fs::remove_file(&part_path);
     }

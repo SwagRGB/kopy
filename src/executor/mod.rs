@@ -61,8 +61,8 @@ pub use trash::move_to_trash;
 
 /// Execute a sync plan
 ///
-/// This executor is Phase 1 single-threaded and continues on non-fatal action errors.
-/// Any per-file errors are aggregated and returned as a summary at the end.
+/// Executes actions sequentially, continues on per-file failures, and returns
+/// an aggregated error summary if any action fails.
 pub fn execute_plan(
     plan: &DiffPlan,
     config: &Config,
@@ -151,7 +151,7 @@ fn execute_action(action: &SyncAction, config: &Config) -> Result<u64, KopyError
         SyncAction::Delete(path) => execute_delete(path, config).map(|_| 0),
         SyncAction::Skip => Ok(0),
         SyncAction::Move { .. } => Err(KopyError::Validation(
-            "Move action is not supported in Phase 1 executor".to_string(),
+            "Move action is not supported by this executor".to_string(),
         )),
     }
 }
