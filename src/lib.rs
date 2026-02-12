@@ -5,7 +5,6 @@
 //! A next-generation CLI synchronization tool that replaces `rsync` with
 //! human-centric design, bulletproof safety, and zero-configuration operation.
 
-// Module declarations
 pub mod commands;
 pub mod config;
 pub mod diff;
@@ -15,7 +14,6 @@ pub mod scanner;
 pub mod types;
 pub mod ui;
 
-// Re-export commonly used types
 pub use config::{Cli, Config};
 pub use types::{DeleteMode, FileEntry, FileTree, KopyError, SyncAction};
 

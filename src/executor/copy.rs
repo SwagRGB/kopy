@@ -40,16 +40,13 @@ use std::path::Path;
 pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64, KopyError> {
     let part_path = dest.with_extension("part");
     let copy_result = (|| -> Result<u64, KopyError> {
-        // STEP 1: Prepare - Create parent directories and .part path
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
         }
 
-        // STEP 2: Copy - Stream from src to .part file
         let mut src_file = File::open(src).map_err(|e| map_file_error(src, e))?;
         let mut part_file = File::create(&part_path).map_err(|e| map_file_error(dest, e))?;
 
-        // Use 128KB buffer as specified in implementation_plan.md
         let mut buffer = vec![0u8; 128 * 1024];
         let mut total_bytes = 0u64;
 
@@ -68,20 +65,15 @@ pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64
             total_bytes += bytes_read as u64;
         }
 
-        // STEP 3: Flush - Force OS to write data to physical disk
         part_file.sync_all().map_err(|e| map_file_error(dest, e))?;
 
-        // Drop the file handle before rename (required on Windows)
         drop(part_file);
 
-        // STEP 4: Metadata - Preserve permissions and mtime
         let src_metadata = fs::metadata(src).map_err(|e| map_file_error(src, e))?;
 
-        // Copy permissions
         fs::set_permissions(&part_path, src_metadata.permissions())
             .map_err(|e| map_file_error(dest, e))?;
 
-        // Copy modification time
         let mtime = src_metadata
             .modified()
             .map_err(|e| map_file_error(src, e))?;
@@ -89,8 +81,6 @@ pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64
         filetime::set_file_mtime(&part_path, filetime_mtime)
             .map_err(|e| map_file_error(dest, e))?;
 
-        // STEP 5: Commit - Atomic rename to final destination
-        // This is atomic on POSIX systems (single syscall)
         fs::rename(&part_path, dest).map_err(|e| map_file_error(dest, e))?;
 
         Ok(total_bytes)

@@ -175,6 +175,9 @@ fn is_strict_descendant(path: &Path, potential_ancestor: &Path) -> bool {
     path.starts_with(potential_ancestor) && path != potential_ancestor
 }
 
+/// Return a canonical path for existing entries, or a normalized absolute path for missing ones.
+///
+/// This allows nested-path validation to work even when one side does not exist yet.
 fn canonical_or_normalized(path: &Path) -> Result<PathBuf, super::types::KopyError> {
     if path.exists() {
         return path.canonicalize().map_err(super::types::KopyError::Io);
@@ -191,6 +194,9 @@ fn canonical_or_normalized(path: &Path) -> Result<PathBuf, super::types::KopyErr
     Ok(normalize_path(&absolute))
 }
 
+/// Normalize `.` and `..` path components without touching filesystem state.
+///
+/// This is lexical normalization; symlink resolution is intentionally not performed here.
 fn normalize_path(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
 
@@ -209,8 +215,6 @@ fn normalize_path(path: &Path) -> PathBuf {
     normalized
 }
 
-// CLI → Config Conversion
-
 impl TryFrom<Cli> for Config {
     type Error = super::types::KopyError;
 
@@ -228,7 +232,6 @@ impl TryFrom<Cli> for Config {
     ///
     /// The resulting Config is validated before being returned.
     fn try_from(cli: Cli) -> Result<Self, Self::Error> {
-        // Determine delete mode based on flags
         let delete_mode = if cli.delete_permanent {
             DeleteMode::Permanent
         } else if cli.delete {
@@ -245,10 +248,9 @@ impl TryFrom<Cli> for Config {
             delete_mode,
             exclude_patterns: cli.exclude,
             include_patterns: cli.include,
-            ..Default::default() // Use defaults for threads, bandwidth_limit, etc.
+            ..Default::default()
         };
 
-        // Validate the config before returning
         config.validate()?;
 
         Ok(config)

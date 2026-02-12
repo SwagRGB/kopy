@@ -8,8 +8,6 @@ use kopy::Config;
 use std::path::PathBuf;
 use std::time::{Duration, UNIX_EPOCH};
 
-// Test Helpers
-
 fn create_test_entry(name: &str, size: u64, mtime_secs: u64) -> FileEntry {
     FileEntry::new(
         PathBuf::from(name),
@@ -35,8 +33,6 @@ fn create_test_config(delete_mode: DeleteMode) -> Config {
         watch_settle: 2,
     }
 }
-
-// compare_files() Tests
 
 #[test]
 fn test_compare_size_mismatch() {
@@ -94,11 +90,8 @@ fn test_compare_identical() {
     assert!(action.is_skip(), "Identical files should Skip");
 }
 
-// generate_sync_plan() Tests
-
 #[test]
 fn test_diff_copy_new() {
-    // Source has file, dest is empty
     let mut src_tree = FileTree::new(PathBuf::from("/src"));
     src_tree.insert(
         PathBuf::from("new_file.txt"),
@@ -119,7 +112,6 @@ fn test_diff_copy_new() {
 
 #[test]
 fn test_diff_overwrite_size() {
-    // Both have file, but sizes differ
     let mut src_tree = FileTree::new(PathBuf::from("/src"));
     src_tree.insert(
         PathBuf::from("file.txt"),
@@ -143,7 +135,6 @@ fn test_diff_overwrite_size() {
 
 #[test]
 fn test_diff_overwrite_newer() {
-    // Both have file, same size, source is newer
     let mut src_tree = FileTree::new(PathBuf::from("/src"));
     src_tree.insert(
         PathBuf::from("file.txt"),
@@ -165,7 +156,6 @@ fn test_diff_overwrite_newer() {
 
 #[test]
 fn test_diff_skip_older() {
-    // Both have file, dest is newer (conflict)
     let mut src_tree = FileTree::new(PathBuf::from("/src"));
     src_tree.insert(
         PathBuf::from("file.txt"),
@@ -188,7 +178,6 @@ fn test_diff_skip_older() {
 
 #[test]
 fn test_diff_delete_trash() {
-    // Dest has file, source is empty, delete_mode = Trash
     let src_tree = FileTree::new(PathBuf::from("/src"));
 
     let mut dest_tree = FileTree::new(PathBuf::from("/dest"));
@@ -210,7 +199,6 @@ fn test_diff_delete_trash() {
 
 #[test]
 fn test_diff_delete_none() {
-    // Dest has file, source is empty, delete_mode = None
     let src_tree = FileTree::new(PathBuf::from("/src"));
 
     let mut dest_tree = FileTree::new(PathBuf::from("/dest"));
@@ -222,14 +210,12 @@ fn test_diff_delete_none() {
     let config = create_test_config(DeleteMode::None);
     let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
 
-    // Should not generate any delete actions
     assert_eq!(plan.stats.delete_count, 0);
     assert_eq!(plan.actions.len(), 0);
 }
 
 #[test]
 fn test_diff_plan_stats() {
-    // Complex scenario with multiple action types
     let mut src_tree = FileTree::new(PathBuf::from("/src"));
     src_tree.insert(
         PathBuf::from("new.txt"),
@@ -261,20 +247,17 @@ fn test_diff_plan_stats() {
     let config = create_test_config(DeleteMode::Trash);
     let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
 
-    // Verify counts
     assert_eq!(plan.stats.copy_count, 1); // new.txt
     assert_eq!(plan.stats.overwrite_count, 1); // update.txt
     assert_eq!(plan.stats.skip_count, 1); // same.txt
     assert_eq!(plan.stats.delete_count, 1); // old.txt
 
-    // Verify transfer statistics (only CopyNew + Overwrite)
     assert_eq!(plan.stats.total_files, 2);
     assert_eq!(plan.stats.total_bytes, 3000); // 1000 + 2000
 }
 
 #[test]
 fn test_diff_sorting_by_path() {
-    // Verify actions are sorted by path
     let mut src_tree = FileTree::new(PathBuf::from("/src"));
     src_tree.insert(
         PathBuf::from("z_file.txt"),
@@ -294,7 +277,6 @@ fn test_diff_sorting_by_path() {
 
     let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
 
-    // Actions should be sorted alphabetically
     assert_eq!(plan.actions.len(), 3);
     assert_eq!(plan.actions[0].path(), Some(&PathBuf::from("a_file.txt")));
     assert_eq!(plan.actions[1].path(), Some(&PathBuf::from("m_file.txt")));
@@ -303,7 +285,6 @@ fn test_diff_sorting_by_path() {
 
 #[test]
 fn test_diff_delete_permanent() {
-    // Test with DeleteMode::Permanent
     let src_tree = FileTree::new(PathBuf::from("/src"));
 
     let mut dest_tree = FileTree::new(PathBuf::from("/dest"));
@@ -321,7 +302,6 @@ fn test_diff_delete_permanent() {
 
 #[test]
 fn test_diff_empty_trees() {
-    // Both trees empty
     let src_tree = FileTree::new(PathBuf::from("/src"));
     let dest_tree = FileTree::new(PathBuf::from("/dest"));
     let config = create_test_config(DeleteMode::None);
@@ -335,7 +315,6 @@ fn test_diff_empty_trees() {
 
 #[test]
 fn test_diff_nested_paths() {
-    // Test with nested directory structures
     let mut src_tree = FileTree::new(PathBuf::from("/src"));
     src_tree.insert(
         PathBuf::from("dir/subdir/file.txt"),

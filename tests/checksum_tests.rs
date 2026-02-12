@@ -11,8 +11,6 @@ use std::path::PathBuf;
 use std::time::{Duration, UNIX_EPOCH};
 use tempfile::TempDir;
 
-// Test Helpers
-
 fn create_test_config(checksum_mode: bool) -> Config {
     Config {
         source: PathBuf::from("/src"),
@@ -36,8 +34,6 @@ fn create_temp_file(dir: &TempDir, name: &str, content: &[u8]) -> PathBuf {
     path
 }
 
-// Hash Computation Tests
-
 #[test]
 fn test_compute_hash_basic() {
     let temp_dir = tempfile::tempdir().unwrap();
@@ -45,7 +41,6 @@ fn test_compute_hash_basic() {
 
     let hash = compute_hash(&file_path).expect("Failed to compute hash");
 
-    // Blake3 hash should be 32 bytes
     assert_eq!(hash.len(), 32);
 }
 
@@ -58,7 +53,6 @@ fn test_compute_hash_deterministic() {
     let hash1 = compute_hash(&file1).expect("Failed to compute hash1");
     let hash2 = compute_hash(&file2).expect("Failed to compute hash2");
 
-    // Same content should produce same hash
     assert_eq!(hash1, hash2);
 }
 
@@ -71,7 +65,6 @@ fn test_compute_hash_different_content() {
     let hash1 = compute_hash(&file1).expect("Failed to compute hash1");
     let hash2 = compute_hash(&file2).expect("Failed to compute hash2");
 
-    // Different content should produce different hashes
     assert_ne!(hash1, hash2);
 }
 
@@ -82,7 +75,6 @@ fn test_compute_hash_empty_file() {
 
     let hash = compute_hash(&file_path).expect("Failed to compute hash of empty file");
 
-    // Should successfully hash empty file
     assert_eq!(hash.len(), 32);
 }
 
@@ -90,7 +82,6 @@ fn test_compute_hash_empty_file() {
 fn test_compute_hash_large_file() {
     let temp_dir = tempfile::tempdir().unwrap();
 
-    // Create a 1MB file
     let content = vec![0x42u8; 1024 * 1024];
     let file_path = create_temp_file(&temp_dir, "large.bin", &content);
 
@@ -105,25 +96,17 @@ fn test_compute_hash_nonexistent_file() {
 
     let result = compute_hash(&path);
 
-    // Should return an error for nonexistent file
     assert!(result.is_err());
 }
 
-// Checksum Mode Integration Tests
-
 #[test]
 fn test_checksum_mismatch() {
-    // RED: This test should FAIL initially
-    // Two files with SAME size and SAME mtime but DIFFERENT content
-
     let src_dir = tempfile::tempdir().unwrap();
     let dest_dir = tempfile::tempdir().unwrap();
 
-    // Create files with same size (12 bytes) but different content
     let src_file = create_temp_file(&src_dir, "file.txt", b"Content AAAA");
     let dest_file = create_temp_file(&dest_dir, "file.txt", b"Content BBBB");
 
-    // Build file trees
     let mut src_tree = FileTree::new(src_dir.path().to_path_buf());
     let src_metadata = fs::metadata(&src_file).unwrap();
     src_tree.insert(
@@ -143,19 +126,17 @@ fn test_checksum_mismatch() {
         FileEntry::new(
             PathBuf::from("file.txt"),
             dest_metadata.len(),
-            dest_metadata.modified().unwrap(), // Same mtime (approximately)
+            dest_metadata.modified().unwrap(),
             0o644,
         ),
     );
 
-    // Run diff with checksum mode ON - use ACTUAL temp dir paths
     let mut config = create_test_config(true);
     config.source = src_dir.path().to_path_buf();
     config.destination = dest_dir.path().to_path_buf();
 
     let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
 
-    // Should detect content mismatch and trigger Overwrite
     assert_eq!(
         plan.stats.overwrite_count, 1,
         "Checksum mismatch should trigger Overwrite"
@@ -165,18 +146,13 @@ fn test_checksum_mismatch() {
 
 #[test]
 fn test_checksum_match() {
-    // RED: This test should FAIL initially
-    // Two files with SAME content but DIFFERENT mtimes
-
     let src_dir = tempfile::tempdir().unwrap();
     let dest_dir = tempfile::tempdir().unwrap();
 
-    // Create files with identical content
     let content = b"Identical content here";
     let src_file = create_temp_file(&src_dir, "file.txt", content);
     let dest_file = create_temp_file(&dest_dir, "file.txt", content);
 
-    // Build file trees with DIFFERENT mtimes
     let mut src_tree = FileTree::new(src_dir.path().to_path_buf());
     let src_metadata = fs::metadata(&src_file).unwrap();
     src_tree.insert(
@@ -184,7 +160,7 @@ fn test_checksum_match() {
         FileEntry::new(
             PathBuf::from("file.txt"),
             src_metadata.len(),
-            UNIX_EPOCH + Duration::from_secs(2000), // Newer
+            UNIX_EPOCH + Duration::from_secs(2000),
             0o644,
         ),
     );
@@ -196,19 +172,17 @@ fn test_checksum_match() {
         FileEntry::new(
             PathBuf::from("file.txt"),
             dest_metadata.len(),
-            UNIX_EPOCH + Duration::from_secs(1000), // Older
+            UNIX_EPOCH + Duration::from_secs(1000),
             0o644,
         ),
     );
 
-    // Run diff with checksum mode ON - use ACTUAL temp dir paths
     let mut config = create_test_config(true);
     config.source = src_dir.path().to_path_buf();
     config.destination = dest_dir.path().to_path_buf();
 
     let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
 
-    // Should detect content match and Skip (despite different mtimes)
     assert_eq!(
         plan.stats.skip_count, 1,
         "Checksum match should trigger Skip even with different mtimes"
@@ -218,16 +192,12 @@ fn test_checksum_match() {
 
 #[test]
 fn test_checksum_mode_off_uses_mtime() {
-    // Verify that checksum_mode=false still uses mtime comparison
-
     let src_dir = tempfile::tempdir().unwrap();
     let dest_dir = tempfile::tempdir().unwrap();
 
-    // Create files with same size but different content
     let _src_file = create_temp_file(&src_dir, "file.txt", b"Content AAAA");
     let _dest_file = create_temp_file(&dest_dir, "file.txt", b"Content BBBB");
 
-    // Build file trees
     let mut src_tree = FileTree::new(src_dir.path().to_path_buf());
     src_tree.insert(
         PathBuf::from("file.txt"),
@@ -250,18 +220,14 @@ fn test_checksum_mode_off_uses_mtime() {
         ),
     );
 
-    // Run diff with checksum mode OFF
     let config = create_test_config(false);
     let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
 
-    // Should use mtime comparison (source newer → overwrite)
     assert_eq!(plan.stats.overwrite_count, 1);
 }
 
 #[test]
 fn test_size_mismatch_always_overwrites() {
-    // Size mismatch should ALWAYS trigger overwrite, regardless of checksum mode
-
     let src_dir = tempfile::tempdir().unwrap();
     let dest_dir = tempfile::tempdir().unwrap();
 
@@ -292,7 +258,6 @@ fn test_size_mismatch_always_overwrites() {
         ),
     );
 
-    // Test with checksum mode ON - use ACTUAL temp dir paths
     let mut config = create_test_config(true);
     config.source = src_dir.path().to_path_buf();
     config.destination = dest_dir.path().to_path_buf();

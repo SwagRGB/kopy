@@ -31,6 +31,10 @@ pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 /// * Broken symlinks are skipped with a warning
 /// * Invalid exclude patterns return KopyError::Config
 /// * Other IO errors are propagated as KopyError
+///
+/// Filter precedence:
+/// 1. walker-level ignore files (`.gitignore`, `.ignore`, `.git/info/exclude`, `.kopyignore`)
+/// 2. CLI pattern check where `--include` overrides `--exclude`
 pub fn scan_directory(
     root_path: &Path,
     config: &Config,
@@ -39,36 +43,29 @@ pub fn scan_directory(
     let start_time = Instant::now();
     let mut tree = FileTree::new(root_path.to_path_buf());
 
-    // Progress tracking
     let mut scanned_count: u64 = 0;
     let mut scanned_bytes: u64 = 0;
 
     let exclude_patterns = compile_patterns(&config.exclude_patterns)?;
     let include_patterns = compile_patterns(&config.include_patterns)?;
 
-    // Build walker with ignore crate
-    // Enable .gitignore, .ignore, .git/info/exclude support
-    // Add custom .kopyignore file support
-    // Apply CLI exclude patterns via overrides
     let walker = ignore::WalkBuilder::new(root_path)
-        .hidden(false) // Do not silently skip dotfiles by default
+        .hidden(false)
         .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
         .ignore(true)
-        .add_custom_ignore_filename(".kopyignore") // Add custom ignore file
+        .add_custom_ignore_filename(".kopyignore")
         .build();
 
     for result in walker {
         match result {
             Ok(entry) => {
-                // Get file type - handle potential errors
                 let file_type = match entry.file_type() {
                     Some(ft) => ft,
-                    None => continue, // Skip if we can't determine file type
+                    None => continue,
                 };
 
-                // Calculate relative path
                 let relative_path = match entry.path().strip_prefix(root_path) {
                     Ok(p) => p.to_path_buf(),
                     Err(_) => {
@@ -87,23 +84,18 @@ pub fn scan_directory(
                     continue;
                 }
 
-                // Track directories
                 if file_type.is_dir() {
                     tree.increment_dirs();
-                    continue; // Don't add directories to the tree, only files
-                }
-
-                // Only process files (including symlinks to files)
-                if !file_type.is_file() && !file_type.is_symlink() {
-                    // Skip special files (pipes, sockets, devices, etc.)
                     continue;
                 }
 
-                // Get metadata
+                if !file_type.is_file() && !file_type.is_symlink() {
+                    continue;
+                }
+
                 let metadata = match entry.metadata() {
                     Ok(m) => m,
                     Err(e) => {
-                        // Log warning for permission denied or broken symlinks
                         eprintln!(
                             "Warning: Failed to read metadata for {}: {}. \
                              Try checking file permissions or if the file was deleted during scan.",
@@ -114,7 +106,6 @@ pub fn scan_directory(
                     }
                 };
 
-                // Handle symlinks
                 let (_is_symlink, symlink_target) = if metadata.is_symlink() {
                     match std::fs::read_link(entry.path()) {
                         Ok(target) => (true, Some(target)),
@@ -125,7 +116,6 @@ pub fn scan_directory(
                                 entry.path().display(),
                                 e
                             );
-                            // Skip broken symlinks
                             continue;
                         }
                     }
@@ -133,7 +123,6 @@ pub fn scan_directory(
                     (false, None)
                 };
 
-                // Extract Unix permissions (platform-specific)
                 #[cfg(unix)]
                 let permissions = {
                     use std::os::unix::fs::PermissionsExt;
@@ -141,9 +130,8 @@ pub fn scan_directory(
                 };
 
                 #[cfg(not(unix))]
-                let permissions = 0o644; // Default for non-Unix platforms
+                let permissions = 0o644;
 
-                // Get modification time
                 let mtime = metadata.modified().map_err(|e| {
                     KopyError::Io(std::io::Error::other(format!(
                         "Failed to get modification time for {}: {}. \
@@ -153,9 +141,7 @@ pub fn scan_directory(
                     )))
                 })?;
 
-                // Create FileEntry
                 let file_entry = if let Some(target) = symlink_target {
-                    // Symlink with valid target
                     FileEntry::new_symlink(
                         relative_path.clone(),
                         metadata.len(),
@@ -164,36 +150,29 @@ pub fn scan_directory(
                         target,
                     )
                 } else {
-                    // Regular file
                     FileEntry::new(relative_path.clone(), metadata.len(), mtime, permissions)
                 };
 
-                // Insert into tree (automatically updates statistics)
                 tree.insert(relative_path, file_entry);
 
-                // Update progress counters
                 scanned_count += 1;
                 scanned_bytes += metadata.len();
 
-                // Emit progress event
                 if let Some(callback) = on_progress {
                     callback(scanned_count, scanned_bytes);
                 }
             }
             Err(e) => {
-                // Handle walker errors (permission denied, etc.)
                 eprintln!(
                     "Warning: Error during directory traversal: {}. \
                      Scan will continue with remaining files.",
                     e
                 );
-                // Continue scanning despite errors
                 continue;
             }
         }
     }
 
-    // Record scan duration
     let duration = start_time.elapsed();
     tree.set_scan_duration(duration);
 
@@ -215,6 +194,7 @@ fn should_include_path(
     exclude_patterns: &[glob::Pattern],
     include_patterns: &[glob::Pattern],
 ) -> bool {
+    // CLI include patterns override CLI excludes for matched paths.
     let excluded = exclude_patterns
         .iter()
         .any(|pattern| pattern.matches_path(relative_path));

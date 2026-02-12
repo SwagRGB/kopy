@@ -14,8 +14,6 @@ use std::fs;
 use std::io::{Error, ErrorKind};
 use std::path::Path;
 
-// Data Structures
-
 /// Represents a single deleted file in the trash
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeletedFile {
@@ -54,16 +52,9 @@ impl Default for TrashManifest {
     }
 }
 
-// Trash Operations
-
 /// Move a file to trash instead of permanently deleting
 ///
-/// This implements Algorithm 4 from implementation_plan.md:
-/// 1. Generate timestamp for trash snapshot directory
-/// 2. Resolve trash paths preserving relative structure
-/// 3. Attempt atomic rename (fast, single syscall)
-/// 4. If cross-device error, fallback to copy+delete
-/// 5. Log metadata to MANIFEST.json
+/// Files moved within the same second are grouped under one timestamp directory.
 ///
 /// # Arguments
 /// * `target_path` - Absolute path to file being deleted
@@ -97,50 +88,31 @@ pub fn move_to_trash(
     relative_path: &Path,
     config: &Config,
 ) -> Result<(), KopyError> {
-    // STEP 1: Generate timestamp
     let timestamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
 
-    // STEP 2: Resolve paths
     let trash_root = dest_root.join(".kopy_trash").join(&timestamp);
     let trash_file_path = trash_root.join(relative_path);
 
-    // STEP 3: Prepare - Create parent directories
     if let Some(parent) = trash_file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
     }
 
-    // Get file size before moving (for manifest)
     let file_size = fs::metadata(target_path)
         .map_err(|e| map_file_error(target_path, e))?
         .len();
 
-    // STEP 4: Atomic Move with Fallback
-    // Try atomic rename first (fast, single syscall)
     match fs::rename(target_path, &trash_file_path) {
-        Ok(()) => {
-            // Success - atomic rename worked
-        }
+        Ok(()) => {}
         Err(e) if e.kind() == ErrorKind::CrossesDevices => {
-            // Fallback for cross-device moves:
-            // 1. Copy to trash using atomic copy
-            // 2. Only delete original if copy succeeded
-            // 3. If copy fails, return error (original untouched)
-
             copy_file_atomic(target_path, &trash_file_path, config)?;
-
-            // Copy succeeded - now safe to delete original
             fs::remove_file(target_path).map_err(|e| map_file_error(target_path, e))?;
         }
-        Err(e) => {
-            // Other errors - propagate up
-            return Err(map_file_error(target_path, e));
-        }
+        Err(e) => return Err(map_file_error(target_path, e)),
     }
 
-    // STEP 5: Log Metadata to MANIFEST.json
     let manifest_path = trash_root.join("MANIFEST.json");
 
-    // Load existing manifest or create new one
+    // Manifest writes use a read-modify-write flow and are not transactional.
     let mut manifest = if manifest_path.exists() {
         let manifest_content =
             fs::read_to_string(&manifest_path).map_err(|e| map_file_error(&manifest_path, e))?;
@@ -150,15 +122,13 @@ pub fn move_to_trash(
         TrashManifest::new()
     };
 
-    // Add this deleted file
     manifest.add_file(DeletedFile {
         original_path: relative_path.to_string_lossy().to_string(),
         trash_path: relative_path.to_string_lossy().to_string(),
-        deleted_at: Local::now().to_rfc3339(), // ISO 8601 format
+        deleted_at: Local::now().to_rfc3339(),
         size: file_size,
     });
 
-    // Write manifest back to disk
     let manifest_json = serde_json::to_string_pretty(&manifest)
         .map_err(|e| KopyError::Validation(format!("Failed to serialize MANIFEST.json: {}", e)))?;
 

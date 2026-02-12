@@ -56,7 +56,6 @@ pub enum ExecutionEvent {
 /// Optional callback used to receive execution events.
 pub type ExecutionCallback = dyn Fn(&ExecutionEvent) + Send + Sync;
 
-// Re-export for convenience
 pub use copy::copy_file_atomic;
 pub use trash::move_to_trash;
 
@@ -157,6 +156,9 @@ fn execute_action(action: &SyncAction, config: &Config) -> Result<u64, KopyError
     }
 }
 
+/// Copy a symlink entry without dereferencing its target.
+///
+/// If a destination path already exists, it is removed first (file/dir/symlink).
 fn copy_symlink(
     src_path: &std::path::Path,
     dest_path: &std::path::Path,
@@ -179,6 +181,9 @@ fn copy_symlink(
     Ok(0)
 }
 
+/// Remove any filesystem entry at `path`.
+///
+/// Directories are removed recursively; files and symlinks are removed as files.
 fn remove_path_any(path: &std::path::Path) -> Result<(), KopyError> {
     let metadata = fs::symlink_metadata(path).map_err(KopyError::Io)?;
     if metadata.file_type().is_dir() {
@@ -206,6 +211,11 @@ fn create_symlink(target: &std::path::Path, link_path: &std::path::Path) -> Resu
     }
 }
 
+/// Execute delete behavior according to configured delete mode.
+///
+/// - `None`: no-op
+/// - `Trash`: move entry to `.kopy_trash`
+/// - `Permanent`: remove file and treat `NotFound` as success
 fn execute_delete(path: &PathBuf, config: &Config) -> Result<(), KopyError> {
     let dest_path = config.destination.join(path);
 
