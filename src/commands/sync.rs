@@ -51,6 +51,7 @@ pub fn run(config: Config) -> Result<(), KopyError> {
     print_plan_summary(&plan);
 
     if config.dry_run {
+        print_dry_run_actions(&plan);
         println!("Dry-run mode: no changes were made.");
         return Ok(());
     }
@@ -134,6 +135,49 @@ fn format_plan_preview(plan: &crate::diff::DiffPlan) -> String {
     )
 }
 
+fn print_dry_run_actions(plan: &crate::diff::DiffPlan) {
+    println!("{}", format_dry_run_actions(plan));
+}
+
+fn format_dry_run_actions(plan: &crate::diff::DiffPlan) -> String {
+    if plan.actions.is_empty() {
+        return "Dry-run actions:\n  (no planned actions)".to_string();
+    }
+
+    let mut lines = Vec::with_capacity(plan.actions.len() + 1);
+    lines.push("Dry-run actions:".to_string());
+    let mut skipped = 0usize;
+    for action in &plan.actions {
+        match action {
+            crate::types::SyncAction::CopyNew(entry) => {
+                lines.push(format!("  COPY      {}", entry.path.display()));
+            }
+            crate::types::SyncAction::Overwrite(entry) => {
+                lines.push(format!("  UPDATE    {}", entry.path.display()));
+            }
+            crate::types::SyncAction::Delete(path) => {
+                lines.push(format!("  DELETE    {}", path.display()));
+            }
+            crate::types::SyncAction::Skip => {
+                skipped += 1;
+            }
+            crate::types::SyncAction::Move { from, to } => {
+                lines.push(format!(
+                    "  MOVE      {} -> {}",
+                    from.display(),
+                    to.display()
+                ));
+            }
+        }
+    }
+
+    if skipped > 0 {
+        lines.push(format!("  ({skipped} unchanged file(s) omitted)"));
+    }
+
+    lines.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,5 +256,38 @@ mod tests {
             preview.contains("Total bytes to transfer:") && preview.contains("MiB"),
             "expected human-readable size in preview, got: {preview}"
         );
+    }
+
+    #[test]
+    fn test_format_dry_run_actions_lists_planned_actions() {
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::CopyNew(FileEntry::new(
+            PathBuf::from("copy.txt"),
+            1,
+            UNIX_EPOCH + Duration::from_secs(1_000),
+            0o644,
+        )));
+        plan.add_action(SyncAction::Overwrite(FileEntry::new(
+            PathBuf::from("update.txt"),
+            2,
+            UNIX_EPOCH + Duration::from_secs(2_000),
+            0o644,
+        )));
+        plan.add_action(SyncAction::Delete(PathBuf::from("delete.txt")));
+        plan.add_action(SyncAction::Skip);
+
+        let preview = format_dry_run_actions(&plan);
+        assert!(preview.contains("Dry-run actions:"));
+        assert!(preview.contains("COPY      copy.txt"));
+        assert!(preview.contains("UPDATE    update.txt"));
+        assert!(preview.contains("DELETE    delete.txt"));
+        assert!(preview.contains("unchanged file(s) omitted"));
+    }
+
+    #[test]
+    fn test_format_dry_run_actions_handles_empty_plan() {
+        let plan = DiffPlan::new();
+        let preview = format_dry_run_actions(&plan);
+        assert!(preview.contains("(no planned actions)"));
     }
 }
