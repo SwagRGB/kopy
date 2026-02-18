@@ -2,9 +2,13 @@
 
 use crate::types::KopyError;
 use crate::Config;
+use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{Error, ErrorKind, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static COPY_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Copy a file atomically using the write-then-rename strategy
 ///
@@ -35,7 +39,7 @@ use std::path::Path;
 /// # Ok::<(), kopy::types::KopyError>(())
 /// ```
 pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64, KopyError> {
-    let part_path = dest.with_extension("part");
+    let part_path = build_temp_path(dest);
     let copy_result = (|| -> Result<u64, KopyError> {
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
@@ -89,6 +93,20 @@ pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64
     }
 
     copy_result
+}
+
+fn build_temp_path(dest: &Path) -> PathBuf {
+    let basename = dest.file_name().unwrap_or_else(|| OsStr::new("kopy_tmp"));
+    let unique = COPY_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    let mut temp_name = OsString::from(".");
+    temp_name.push(basename);
+    temp_name.push(".kopy.part.");
+    temp_name.push(std::process::id().to_string());
+    temp_name.push(".");
+    temp_name.push(unique.to_string());
+
+    dest.with_file_name(temp_name)
 }
 
 fn map_file_error(path: &Path, error: Error) -> KopyError {
@@ -167,5 +185,34 @@ mod tests {
         copy_file_atomic(&src, &dest, &config).expect("copy");
         assert!(dest.exists());
         assert_eq!(fs::read(&dest).expect("read dest"), b"nested");
+    }
+
+    #[test]
+    fn test_copy_file_atomic_for_part_extension_destination() {
+        let temp = TempDir::new().expect("create temp dir");
+        let src = temp.path().join("src.part");
+        let dest = temp.path().join("dest.part");
+
+        fs::write(&src, b"part-bytes").expect("write src");
+        let config = Config::default();
+
+        copy_file_atomic(&src, &dest, &config).expect("copy");
+        assert_eq!(fs::read(&dest).expect("read dest"), b"part-bytes");
+    }
+
+    #[test]
+    fn test_copy_file_atomic_does_not_clobber_sibling_part_file() {
+        let temp = TempDir::new().expect("create temp dir");
+        let src = temp.path().join("source.txt");
+        let dest = temp.path().join("target");
+        let sibling_part = temp.path().join("target.part");
+
+        fs::write(&src, b"fresh").expect("write src");
+        fs::write(&sibling_part, b"keep-me").expect("write sibling");
+        let config = Config::default();
+
+        copy_file_atomic(&src, &dest, &config).expect("copy");
+        assert_eq!(fs::read(&dest).expect("read dest"), b"fresh");
+        assert_eq!(fs::read(&sibling_part).expect("read sibling"), b"keep-me");
     }
 }
