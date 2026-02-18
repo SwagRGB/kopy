@@ -1,6 +1,6 @@
 [package]
 name = "kopy"
-version = "0.4.11"
+version = "0.4.12"
 edition = "2021"
 authors = ["Swagnik Banerjee <arko9120@gmail.com>"]
 description = "Modern file synchronization tool - Safety by default, speed by design"

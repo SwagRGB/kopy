@@ -8,10 +8,21 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 ## [Unreleased]
 
 ### Added
-- Tag-triggered Linux release workflow that publishes a release tarball and checksum.
-- Automated release note extraction from `CHANGELOG.md` sections.
+- No unreleased entries yet.
+
+## [0.4.12] - 2026-02-18
+
+### Added
+- Additional API rustdoc coverage with runnable examples across public sync/scanner/diff/executor/config/type APIs.
+- Linux tag-triggered release workflow that publishes:
+  - `kopy-x86_64-unknown-linux-gnu.tar.gz`
+  - matching `.sha256` checksum
+- Release notes extraction from `CHANGELOG.md` based on tag version.
 - MIT license file.
-- Additional API rustdoc coverage with runnable examples.
+
+### Changed
+- README rewritten in a user-facing format (overview, usage, configuration, limitations).
+- Changelog backfilled with historical release entries from version bump history.
 
 ## [0.4.11] - 2026-02-12
 
