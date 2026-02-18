@@ -51,6 +51,22 @@ impl SyncAction {
     /// Check if this action requires file transfer
     ///
     /// Returns true for CopyNew and Overwrite, false otherwise
+    ///
+    /// # Example
+    /// ```
+    /// use kopy::types::{FileEntry, SyncAction};
+    /// use std::path::PathBuf;
+    /// use std::time::{Duration, UNIX_EPOCH};
+    ///
+    /// let entry = FileEntry::new(
+    ///     PathBuf::from("a.txt"),
+    ///     1,
+    ///     UNIX_EPOCH + Duration::from_secs(1),
+    ///     0o644,
+    /// );
+    /// assert!(SyncAction::CopyNew(entry).requires_transfer());
+    /// assert!(!SyncAction::Delete(PathBuf::from("a.txt")).requires_transfer());
+    /// ```
     pub fn requires_transfer(&self) -> bool {
         matches!(self, SyncAction::CopyNew(_) | SyncAction::Overwrite(_))
     }
@@ -119,6 +135,12 @@ impl DeleteMode {
     }
 
     /// Get a human-readable description of this delete mode
+    ///
+    /// # Example
+    /// ```
+    /// use kopy::types::DeleteMode;
+    /// assert_eq!(DeleteMode::Trash.description(), "Move to trash (recoverable)");
+    /// ```
     pub fn description(&self) -> &'static str {
         match self {
             DeleteMode::None => "No deletions",

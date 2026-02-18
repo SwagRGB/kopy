@@ -16,6 +16,30 @@ use crate::Config;
 ///
 /// # Returns
 /// A `DiffPlan` containing all sync actions and statistics
+///
+/// # Example
+/// ```
+/// use kopy::diff::generate_sync_plan;
+/// use kopy::types::{FileEntry, FileTree};
+/// use kopy::Config;
+/// use std::path::PathBuf;
+/// use std::time::{Duration, UNIX_EPOCH};
+///
+/// let mut src = FileTree::new(PathBuf::from("src"));
+/// let dest = FileTree::new(PathBuf::from("dst"));
+/// src.insert(
+///     PathBuf::from("new.txt"),
+///     FileEntry::new(
+///         PathBuf::from("new.txt"),
+///         4,
+///         UNIX_EPOCH + Duration::from_secs(1_000),
+///         0o644,
+///     ),
+/// );
+///
+/// let plan = generate_sync_plan(&src, &dest, &Config::default());
+/// assert_eq!(plan.stats.copy_count, 1);
+/// ```
 pub fn generate_sync_plan(src_tree: &FileTree, dest_tree: &FileTree, config: &Config) -> DiffPlan {
     let mut plan = DiffPlan::new();
 

@@ -11,7 +11,25 @@ use std::io::ErrorKind;
 use std::sync::{Arc, Mutex};
 use std::{collections::BTreeMap, path::PathBuf};
 
-/// Run the sync operation
+/// Run a full sync cycle for the provided configuration.
+///
+/// This scans source and destination, builds a diff plan, prints a summary,
+/// and executes actions unless `dry_run` is enabled.
+///
+/// # Example
+/// ```no_run
+/// use kopy::{commands::sync::run, Config};
+/// use std::path::PathBuf;
+///
+/// let config = Config {
+///     source: PathBuf::from("./src_dir"),
+///     destination: PathBuf::from("./dst_dir"),
+///     ..Config::default()
+/// };
+///
+/// run(config)?;
+/// # Ok::<(), kopy::types::KopyError>(())
+/// ```
 pub fn run(config: Config) -> Result<(), KopyError> {
     let reporter = Arc::new(Mutex::new(ProgressReporter::new()));
 

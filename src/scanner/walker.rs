@@ -35,6 +35,18 @@ pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 /// Filter precedence:
 /// 1. walker-level ignore files (`.gitignore`, `.ignore`, `.git/info/exclude`, `.kopyignore`)
 /// 2. CLI pattern check where `--include` overrides `--exclude`
+///
+/// # Example
+/// ```no_run
+/// use kopy::scanner::scan_directory;
+/// use kopy::Config;
+/// use std::path::Path;
+///
+/// let config = Config::default();
+/// let tree = scan_directory(Path::new("./src_dir"), &config, None)?;
+/// println!("Scanned {} files", tree.total_files);
+/// # Ok::<(), kopy::types::KopyError>(())
+/// ```
 pub fn scan_directory(
     root_path: &Path,
     config: &Config,

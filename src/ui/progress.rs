@@ -14,6 +14,15 @@ pub struct ProgressReporter {
 
 impl ProgressReporter {
     /// Create a new progress reporter
+    ///
+    /// # Example
+    /// ```
+    /// use kopy::ui::ProgressReporter;
+    ///
+    /// let mut progress = ProgressReporter::new();
+    /// progress.start_scan("source");
+    /// progress.start_transfer(3);
+    /// ```
     pub fn new() -> Self {
         let scan_bar = ProgressBar::new_spinner();
         scan_bar.enable_steady_tick(std::time::Duration::from_millis(120));

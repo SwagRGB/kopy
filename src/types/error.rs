@@ -45,6 +45,8 @@ pub enum KopyError {
 
 impl KopyError {
     /// Check if this error is recoverable
+    ///
+    /// Recoverable errors indicate retry may succeed without changing inputs.
     pub fn is_recoverable(&self) -> bool {
         matches!(
             self,

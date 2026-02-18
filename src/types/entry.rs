@@ -29,6 +29,21 @@ pub struct FileEntry {
 
 impl FileEntry {
     /// Create a new FileEntry with the given parameters
+    ///
+    /// # Example
+    /// ```
+    /// use kopy::types::FileEntry;
+    /// use std::path::PathBuf;
+    /// use std::time::{Duration, UNIX_EPOCH};
+    ///
+    /// let entry = FileEntry::new(
+    ///     PathBuf::from("file.txt"),
+    ///     128,
+    ///     UNIX_EPOCH + Duration::from_secs(1_000),
+    ///     0o644,
+    /// );
+    /// assert!(!entry.is_symlink);
+    /// ```
     pub fn new(path: PathBuf, size: u64, mtime: SystemTime, permissions: u32) -> Self {
         Self {
             path,
@@ -42,6 +57,22 @@ impl FileEntry {
     }
 
     /// Create a new FileEntry for a symlink
+    ///
+    /// # Example
+    /// ```
+    /// use kopy::types::FileEntry;
+    /// use std::path::PathBuf;
+    /// use std::time::{Duration, UNIX_EPOCH};
+    ///
+    /// let link = FileEntry::new_symlink(
+    ///     PathBuf::from("link.txt"),
+    ///     0,
+    ///     UNIX_EPOCH + Duration::from_secs(1_000),
+    ///     0o777,
+    ///     PathBuf::from("target.txt"),
+    /// );
+    /// assert!(link.is_symlink);
+    /// ```
     pub fn new_symlink(
         path: PathBuf,
         size: u64,
@@ -61,6 +92,8 @@ impl FileEntry {
     }
 
     /// Set the hash for this file entry
+    ///
+    /// This is primarily used by checksum/diff stages once content hash is computed.
     pub fn with_hash(mut self, hash: [u8; 32]) -> Self {
         self.hash = Some(hash);
         self

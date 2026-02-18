@@ -106,6 +106,21 @@ impl Config {
     /// - Source path exists and is a directory
     /// - Source and destination are different paths
     /// - All exclude and include patterns are valid glob patterns
+    ///
+    /// # Example
+    /// ```no_run
+    /// use kopy::Config;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = Config {
+    ///     source: PathBuf::from("./src_dir"),
+    ///     destination: PathBuf::from("./dst_dir"),
+    ///     ..Config::default()
+    /// };
+    ///
+    /// config.validate()?;
+    /// # Ok::<(), kopy::types::KopyError>(())
+    /// ```
     pub fn validate(&self) -> Result<(), super::types::KopyError> {
         // 1. Check source exists
         if !self.source.exists() {
@@ -234,6 +249,9 @@ impl TryFrom<Cli> for Config {
     /// - `include` → `include_patterns`
     ///
     /// The resulting Config is validated before being returned.
+    ///
+    /// # Errors
+    /// Returns `KopyError::Config` for invalid path relationships or invalid glob patterns.
     fn try_from(cli: Cli) -> Result<Self, Self::Error> {
         let delete_mode = if cli.delete_permanent {
             DeleteMode::Permanent

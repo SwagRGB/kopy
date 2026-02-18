@@ -19,6 +19,31 @@ use crate::Config;
 ///
 /// # Returns
 /// The appropriate `SyncAction` based on the comparison
+///
+/// # Example
+/// ```
+/// use kopy::diff::compare_files;
+/// use kopy::types::FileEntry;
+/// use kopy::Config;
+/// use std::path::PathBuf;
+/// use std::time::{Duration, UNIX_EPOCH};
+///
+/// let src = FileEntry::new(
+///     PathBuf::from("a.txt"),
+///     10,
+///     UNIX_EPOCH + Duration::from_secs(2_000),
+///     0o644,
+/// );
+/// let dest = FileEntry::new(
+///     PathBuf::from("a.txt"),
+///     10,
+///     UNIX_EPOCH + Duration::from_secs(1_000),
+///     0o644,
+/// );
+///
+/// let action = compare_files(&src, &dest, &Config::default());
+/// assert!(action.is_overwrite());
+/// ```
 pub fn compare_files(src: &FileEntry, dest: &FileEntry, config: &Config) -> SyncAction {
     if src.is_symlink != dest.is_symlink {
         return SyncAction::Overwrite(src.clone());

@@ -23,6 +23,15 @@ pub struct FileTree {
 
 impl FileTree {
     /// Create a new empty FileTree
+    ///
+    /// # Example
+    /// ```
+    /// use kopy::types::FileTree;
+    /// use std::path::PathBuf;
+    ///
+    /// let tree = FileTree::new(PathBuf::from("src"));
+    /// assert!(tree.is_empty());
+    /// ```
     pub fn new(root_path: PathBuf) -> Self {
         Self {
             entries: HashMap::new(),
@@ -50,12 +59,12 @@ impl FileTree {
         self.entries.insert(path, entry);
     }
 
-    /// Get a file entry by path
+    /// Get a file entry by relative path.
     pub fn get(&self, path: &PathBuf) -> Option<&FileEntry> {
         self.entries.get(path)
     }
 
-    /// Check if a path exists in the tree
+    /// Check if a relative path exists in the tree.
     pub fn contains(&self, path: &PathBuf) -> bool {
         self.entries.contains_key(path)
     }

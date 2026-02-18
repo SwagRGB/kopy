@@ -63,6 +63,24 @@ pub use trash::move_to_trash;
 ///
 /// Executes actions sequentially, continues on per-file failures, and returns
 /// an aggregated error summary if any action fails.
+///
+/// # Example
+/// ```no_run
+/// use kopy::executor::execute_plan;
+/// use kopy::diff::DiffPlan;
+/// use kopy::Config;
+/// use std::path::PathBuf;
+///
+/// let plan = DiffPlan::new();
+/// let config = Config {
+///     source: PathBuf::from("./src_dir"),
+///     destination: PathBuf::from("./dst_dir"),
+///     ..Config::default()
+/// };
+///
+/// let _stats = execute_plan(&plan, &config, None)?;
+/// # Ok::<(), kopy::types::KopyError>(())
+/// ```
 pub fn execute_plan(
     plan: &DiffPlan,
     config: &Config,
