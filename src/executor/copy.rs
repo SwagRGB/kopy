@@ -117,6 +117,8 @@ fn is_disk_full_error(error: &Error) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_map_permission_error() {
@@ -137,5 +139,33 @@ mod tests {
         let error = Error::from(ErrorKind::NotFound);
         let mapped = map_file_error(Path::new("file.txt"), error);
         assert!(matches!(mapped, KopyError::Io(_)));
+    }
+
+    #[test]
+    fn test_copy_file_atomic_basic_content() {
+        let temp = TempDir::new().expect("create temp dir");
+        let src = temp.path().join("src.txt");
+        let dest = temp.path().join("dest.txt");
+
+        fs::write(&src, b"hello copy").expect("write src");
+        let config = Config::default();
+
+        let copied = copy_file_atomic(&src, &dest, &config).expect("copy");
+        assert_eq!(copied, 10);
+        assert_eq!(fs::read(&dest).expect("read dest"), b"hello copy");
+    }
+
+    #[test]
+    fn test_copy_file_atomic_creates_parent_directories() {
+        let temp = TempDir::new().expect("create temp dir");
+        let src = temp.path().join("src.txt");
+        let dest = temp.path().join("a/b/c/dest.txt");
+
+        fs::write(&src, b"nested").expect("write src");
+        let config = Config::default();
+
+        copy_file_atomic(&src, &dest, &config).expect("copy");
+        assert!(dest.exists());
+        assert_eq!(fs::read(&dest).expect("read dest"), b"nested");
     }
 }
