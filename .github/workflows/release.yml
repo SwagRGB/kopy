@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "[0-9]*.[0-9]*.[0-9]*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-linux:
+    name: Build and Release (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --locked --verbose
+
+      - name: Build release binary
+        run: cargo build --locked --release --verbose
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p dist
+          cp target/release/kopy dist/kopy
+          chmod +x dist/kopy
+          tar -C dist -czf dist/kopy-x86_64-unknown-linux-gnu.tar.gz kopy
+          sha256sum dist/kopy-x86_64-unknown-linux-gnu.tar.gz > dist/kopy-x86_64-unknown-linux-gnu.tar.gz.sha256
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          VERSION="${TAG_NAME#v}"
+
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[v?" v "\\]" {found=1; next}
+            found && $0 ~ "^## \\[" {exit}
+            found {print}
+          ' CHANGELOG.md > RELEASE_NOTES.md
+
+          if [ ! -s RELEASE_NOTES.md ]; then
+            {
+              echo "Release ${TAG_NAME}"
+              echo
+              echo "No matching section was found in CHANGELOG.md for version ${VERSION}."
+            } > RELEASE_NOTES.md
+          fi
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/kopy-x86_64-unknown-linux-gnu.tar.gz
+            dist/kopy-x86_64-unknown-linux-gnu.tar.gz.sha256
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: false

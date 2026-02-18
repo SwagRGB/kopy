@@ -1,0 +1,73 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on Keep a Changelog.
+Entries before `0.4.11` are backfilled from git history and version bump commits.
+
+## [Unreleased]
+
+### Added
+- Tag-triggered Linux release workflow that publishes a release tarball and checksum.
+- Automated release note extraction from `CHANGELOG.md` sections.
+- MIT license file.
+- Additional API rustdoc coverage with runnable examples.
+
+## [0.4.11] - 2026-02-12
+
+### Added
+- End-to-end integration coverage for sync command flows:
+  - basic sync into empty destination
+  - update/overwrite existing destination file
+  - dry-run no-change verification
+  - exclude pattern behavior
+- Additional atomic copy unit coverage for basic content copy and parent directory creation.
+
+### Changed
+- README rewritten for end users (overview, usage, configuration, limitations).
+- Public API documentation expanded with concise rustdoc examples.
+
+## [0.4.8] - 2026-02-11
+
+### Added
+- Dry-run action listing.
+- Progress/plan UI improvements:
+  - human-readable plan preview
+  - clearer transfer summary counts
+  - grouped end-of-run error summaries
+  - human-readable sync error messages
+
+### Fixed
+- Nested source/destination validation to prevent recursive sync growth.
+- Symlink copy semantics and scanner behavior around hidden/include files.
+- Skip-only plan short-circuiting and permanent delete race handling.
+
+### Changed
+- CI workflow reliability updates and lockfile tracking for `--locked` commands.
+
+## [0.4.0] - 2026-02-07
+
+### Added
+- Atomic file copy with metadata preservation.
+- Trash-based delete operations with snapshot manifests.
+- Executor wiring for end-to-end sync execution.
+- Initial scanning/transfer progress reporting.
+
+## [0.3.0] - 2026-02-07
+
+### Added
+- Metadata diff engine and sync plan generation.
+- Optional Blake3 checksum-based comparison.
+- Transfer duration estimation helpers in plan statistics.
+
+## [0.2.2] - 2026-02-06
+
+### Changed
+- Scanner readability and diagnostics improvements.
+- Better symlink entry handling in scanner internals.
+
+## [0.2.1] - 2026-02-06
+
+### Added
+- Recursive directory scanning with ignore-file support.
+- Progress callback support during scan (files and bytes).
