@@ -19,6 +19,7 @@ toml = "0.8"
 # File System (Phase 1: Sequential walker, Phase 2: Parallel + .gitignore support)
 ignore = "0.4"
 camino = "1.1"
+jwalk = "0.8"
 
 # Pattern Matching
 globset = "0.4"

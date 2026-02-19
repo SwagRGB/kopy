@@ -238,6 +238,12 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn test_jwalk_can_be_initialized_for_phase2_parallel_scan() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let _walker = jwalk::WalkDir::new(temp_dir.path());
+    }
+
+    #[test]
     fn test_scan_empty_directory() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let root_path = temp_dir.path();
