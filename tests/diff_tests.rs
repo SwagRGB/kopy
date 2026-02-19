@@ -356,3 +356,69 @@ fn test_diff_nested_paths() {
     assert_eq!(plan.stats.copy_count, 1);
     assert!(plan.actions[0].is_copy_new());
 }
+
+#[test]
+fn test_diff_conflict_source_file_vs_destination_directory_entries() {
+    let mut src_tree = FileTree::new(PathBuf::from("/src"));
+    src_tree.insert(PathBuf::from("a"), create_test_entry("a", 10, 1000));
+
+    let mut dest_tree = FileTree::new(PathBuf::from("/dest"));
+    dest_tree.insert(
+        PathBuf::from("a/old.txt"),
+        create_test_entry("a/old.txt", 4, 900),
+    );
+
+    let config = create_test_config(DeleteMode::Trash);
+    let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
+
+    assert!(plan
+        .actions
+        .iter()
+        .any(|a| matches!(a, SyncAction::Delete(path) if path == &PathBuf::from("a"))));
+    assert!(plan.actions.iter().any(
+        |a| matches!(a, SyncAction::CopyNew(entry) if entry.path == std::path::Path::new("a"))
+    ));
+}
+
+#[test]
+fn test_diff_conflict_source_nested_vs_destination_file() {
+    let mut src_tree = FileTree::new(PathBuf::from("/src"));
+    src_tree.insert(
+        PathBuf::from("a/b.txt"),
+        create_test_entry("a/b.txt", 12, 1000),
+    );
+
+    let mut dest_tree = FileTree::new(PathBuf::from("/dest"));
+    dest_tree.insert(PathBuf::from("a"), create_test_entry("a", 1, 900));
+
+    let config = create_test_config(DeleteMode::Trash);
+    let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
+
+    assert!(plan
+        .actions
+        .iter()
+        .any(|a| matches!(a, SyncAction::Delete(path) if path == &PathBuf::from("a"))));
+    assert!(plan.actions.iter().any(
+        |a| matches!(a, SyncAction::CopyNew(entry) if entry.path == std::path::Path::new("a/b.txt"))
+    ));
+}
+
+#[test]
+fn test_diff_conflict_in_none_mode_is_non_destructive() {
+    let mut src_tree = FileTree::new(PathBuf::from("/src"));
+    src_tree.insert(PathBuf::from("a"), create_test_entry("a", 10, 1000));
+
+    let mut dest_tree = FileTree::new(PathBuf::from("/dest"));
+    dest_tree.insert(
+        PathBuf::from("a/old.txt"),
+        create_test_entry("a/old.txt", 4, 900),
+    );
+
+    let config = create_test_config(DeleteMode::None);
+    let plan = generate_sync_plan(&src_tree, &dest_tree, &config);
+
+    assert!(!plan.actions.iter().any(|a| a.is_delete()));
+    assert!(plan.actions.iter().any(
+        |a| matches!(a, SyncAction::CopyNew(entry) if entry.path == std::path::Path::new("a"))
+    ));
+}

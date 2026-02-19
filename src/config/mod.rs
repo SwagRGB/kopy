@@ -155,6 +155,14 @@ impl Config {
         // 3.1. Check for nested source/destination roots (prevents recursive growth)
         let source_normalized = canonical_or_normalized(&self.source)?;
         let destination_normalized = canonical_or_normalized(&self.destination)?;
+        if source_normalized == destination_normalized {
+            return Err(super::types::KopyError::Config(format!(
+                "Source and destination cannot resolve to the same directory. source='{}', destination='{}'",
+                self.source.display(),
+                self.destination.display()
+            )));
+        }
+
         if is_strict_descendant(&destination_normalized, &source_normalized)
             || is_strict_descendant(&source_normalized, &destination_normalized)
         {
@@ -487,6 +495,31 @@ mod tests {
         assert!(result.is_err());
         if let Err(super::super::types::KopyError::Config(msg)) = result {
             assert!(msg.contains("cannot be nested"));
+        } else {
+            panic!("Expected Config error");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_validation_fail_canonical_equal_via_symlink_alias() {
+        use std::os::unix::fs::symlink;
+
+        let src_dir = create_temp_dir();
+        let alias_parent = create_temp_dir();
+        let alias_path = alias_parent.path().join("src_alias");
+        symlink(src_dir.path(), &alias_path).expect("create symlink alias");
+
+        let config = Config {
+            source: src_dir.path().to_path_buf(),
+            destination: alias_path,
+            ..Default::default()
+        };
+
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(super::super::types::KopyError::Config(msg)) = result {
+            assert!(msg.contains("resolve to the same directory"));
         } else {
             panic!("Expected Config error");
         }

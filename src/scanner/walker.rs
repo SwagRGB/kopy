@@ -195,7 +195,7 @@ pub fn scan_directory(
     Ok(tree)
 }
 
-fn compile_patterns(patterns: &[String]) -> Result<Vec<glob::Pattern>, KopyError> {
+pub(super) fn compile_patterns(patterns: &[String]) -> Result<Vec<glob::Pattern>, KopyError> {
     patterns
         .iter()
         .map(|pattern| {
@@ -205,7 +205,7 @@ fn compile_patterns(patterns: &[String]) -> Result<Vec<glob::Pattern>, KopyError
         .collect()
 }
 
-fn should_include_path(
+pub(super) fn should_include_path(
     relative_path: &Path,
     exclude_patterns: &[glob::Pattern],
     include_patterns: &[glob::Pattern],
@@ -223,7 +223,11 @@ fn should_include_path(
         .any(|pattern| pattern.matches_path(relative_path))
 }
 
-fn is_destination_internal_trash(root_path: &Path, config: &Config, relative_path: &Path) -> bool {
+pub(super) fn is_destination_internal_trash(
+    root_path: &Path,
+    config: &Config,
+    relative_path: &Path,
+) -> bool {
     root_path == config.destination && relative_path.starts_with(".kopy_trash")
 }
 

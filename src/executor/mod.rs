@@ -187,7 +187,7 @@ fn copy_symlink(
     }
 
     if fs::symlink_metadata(dest_path).is_ok() {
-        remove_path_any(dest_path)?;
+        remove_path_any(dest_path).map_err(KopyError::Io)?;
     }
 
     let target = match &entry.symlink_target {
@@ -202,12 +202,12 @@ fn copy_symlink(
 /// Remove any filesystem entry at `path`.
 ///
 /// Directories are removed recursively; files and symlinks are removed as files.
-fn remove_path_any(path: &std::path::Path) -> Result<(), KopyError> {
-    let metadata = fs::symlink_metadata(path).map_err(KopyError::Io)?;
+fn remove_path_any(path: &std::path::Path) -> Result<(), Error> {
+    let metadata = fs::symlink_metadata(path)?;
     if metadata.file_type().is_dir() {
-        fs::remove_dir_all(path).map_err(KopyError::Io)
+        fs::remove_dir_all(path)
     } else {
-        fs::remove_file(path).map_err(KopyError::Io)
+        fs::remove_file(path)
     }
 }
 
@@ -231,7 +231,7 @@ fn create_symlink(target: &std::path::Path, link_path: &std::path::Path) -> Resu
 
 /// Execute delete behavior according to configured delete mode.
 ///
-/// - `None`: no-op
+/// - `None`: no-op (non-destructive)
 /// - `Trash`: move entry to `.kopy_trash`
 /// - `Permanent`: remove file and treat `NotFound` as success
 fn execute_delete(path: &PathBuf, config: &Config) -> Result<(), KopyError> {
@@ -246,11 +246,22 @@ fn execute_delete(path: &PathBuf, config: &Config) -> Result<(), KopyError> {
                 move_to_trash(&dest_path, &config.destination, path, config)
             }
         }
-        DeleteMode::Permanent => match fs::remove_file(&dest_path) {
-            Ok(()) => Ok(()),
+        DeleteMode::Permanent => match fs::symlink_metadata(&dest_path) {
+            Ok(_) => remove_with_mapped_delete_error(&dest_path, true),
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
             Err(e) => Err(map_delete_error(&dest_path, e)),
         },
+    }
+}
+
+fn remove_with_mapped_delete_error(
+    path: &std::path::Path,
+    not_found_is_ok: bool,
+) -> Result<(), KopyError> {
+    match remove_path_any(path) {
+        Ok(()) => Ok(()),
+        Err(e) if not_found_is_ok && e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(map_delete_error(path, e)),
     }
 }
 
@@ -397,6 +408,22 @@ mod tests {
         assert_eq!(stats.failed_actions, 0);
         assert!(!dst.path().join("old.txt").exists());
         assert!(dst.path().join(".kopy_trash").exists());
+    }
+
+    #[test]
+    fn test_execute_plan_delete_none_is_noop() {
+        let src = tempfile::tempdir().expect("create src tempdir");
+        let dst = tempfile::tempdir().expect("create dst tempdir");
+        let config = config_for(&src, &dst, DeleteMode::None);
+
+        fs::write(dst.path().join("keep.txt"), b"keep").expect("write dst keep");
+
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::Delete(PathBuf::from("keep.txt")));
+
+        let stats = execute_plan(&plan, &config, None).expect("execute plan");
+        assert_eq!(stats.failed_actions, 0);
+        assert!(dst.path().join("keep.txt").exists());
     }
 
     #[test]
