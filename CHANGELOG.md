@@ -8,8 +8,20 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 ## [Unreleased]
 
 ### Added
-- No unreleased entries yet.
+- Parallel scanner implementation (`scan_directory_parallel`) using ignore crate parallel traversal with parity-focused filtering behavior.
+- Regression coverage for:
+  - canonical-equal source/destination validation via symlink alias
+  - file-vs-directory conflict planning paths
+  - `DeleteMode::None` non-destructive delete behavior
 
+### Fixed
+- Reject source/destination roots that resolve to the same canonical directory (not only nested paths).
+- Diff planning conflict handling for file-vs-directory path collisions.
+- Permanent delete TOCTOU handling to treat post-check `NotFound` as success.
+- Permanent delete error mapping to preserve typed `PermissionDenied`/`DiskFull` classifications.
+
+### Changed
+- Reduced mutex lock scope in parallel scanning workers to avoid serializing metadata/filter work under contention.
 ## [0.4.12] - 2026-02-18
 
 ### Added
