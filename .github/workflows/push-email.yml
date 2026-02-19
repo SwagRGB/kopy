@@ -1,0 +1,34 @@
+name: Push Email Notification
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Send Push Email
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Send notification email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          secure: false
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "[kopy] New push on ${{ github.ref_name }}"
+          to: ${{ secrets.NOTIFY_TO }}
+          from: ${{ secrets.NOTIFY_FROM }}
+          body: |
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Pusher: ${{ github.actor }}
+            Commit: ${{ github.sha }}
+            Message: ${{ github.event.head_commit.message }}
+            URL: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
