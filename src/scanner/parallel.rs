@@ -10,10 +10,15 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+const DEFAULT_COLLECTOR_MEMORY_LIMIT_BYTES: u64 = 128 * 1024 * 1024;
+
 #[derive(Default)]
 struct CollectedScan {
     files: Vec<FileEntry>,
+    collector_bytes: u64,
     total_dirs: usize,
+    fallback_tree: Option<FileTree>,
+    fallback_triggered: bool,
     fatal_error: Option<KopyError>,
 }
 
@@ -31,6 +36,21 @@ pub fn scan_directory_parallel(
     config: &Config,
     on_progress: Option<&ProgressCallback>,
 ) -> Result<FileTree, KopyError> {
+    let (tree, _) = scan_directory_parallel_with_limit(
+        root_path,
+        config,
+        on_progress,
+        DEFAULT_COLLECTOR_MEMORY_LIMIT_BYTES,
+    )?;
+    Ok(tree)
+}
+
+fn scan_directory_parallel_with_limit(
+    root_path: &Path,
+    config: &Config,
+    on_progress: Option<&ProgressCallback>,
+    collector_limit_bytes: u64,
+) -> Result<(FileTree, bool), KopyError> {
     let start_time = Instant::now();
 
     let exclude_patterns = compile_patterns(&config.exclude_patterns)?;
@@ -113,7 +133,11 @@ pub fn scan_directory_parallel(
                     Ok(s) => s,
                     Err(_) => return WalkState::Quit,
                 };
-                scan.total_dirs += 1;
+                if let Some(tree) = scan.fallback_tree.as_mut() {
+                    tree.increment_dirs();
+                } else {
+                    scan.total_dirs += 1;
+                }
                 return WalkState::Continue;
             }
 
@@ -202,12 +226,24 @@ pub fn scan_directory_parallel(
                 Ok(s) => s,
                 Err(_) => return WalkState::Quit,
             };
+            if let Some(tree) = scan.fallback_tree.as_mut() {
+                let relative_path = file_entry.path.clone();
+                tree.insert(relative_path, file_entry);
+                return WalkState::Continue;
+            }
+
+            scan.collector_bytes = scan
+                .collector_bytes
+                .saturating_add(estimated_entry_bytes(&file_entry));
             scan.files.push(file_entry);
+
+            if scan.collector_bytes > collector_limit_bytes {
+                engage_chunked_merge_fallback(&mut scan, &root);
+            }
             WalkState::Continue
         })
     });
 
-    let mut tree = FileTree::new(root_path.to_path_buf());
     let mut scan = collected
         .lock()
         .map_err(|_| KopyError::Validation("Parallel scanner state lock poisoned".to_string()))?;
@@ -216,9 +252,15 @@ pub fn scan_directory_parallel(
         return Err(err);
     }
 
+    let mut tree = scan
+        .fallback_tree
+        .take()
+        .unwrap_or_else(|| FileTree::new(root_path.to_path_buf()));
+
     for _ in 0..scan.total_dirs {
         tree.increment_dirs();
     }
+    scan.total_dirs = 0;
 
     for entry in scan.files.drain(..) {
         let relative_path = entry.path.clone();
@@ -226,7 +268,39 @@ pub fn scan_directory_parallel(
     }
 
     tree.set_scan_duration(start_time.elapsed());
-    Ok(tree)
+    Ok((tree, scan.fallback_triggered))
+}
+
+fn estimated_entry_bytes(entry: &FileEntry) -> u64 {
+    let path_bytes = entry.path.to_string_lossy().len() as u64;
+    let symlink_bytes = entry
+        .symlink_target
+        .as_ref()
+        .map(|target| target.to_string_lossy().len() as u64)
+        .unwrap_or(0);
+    // Includes entry metadata and path storage overhead estimate.
+    256 + path_bytes + symlink_bytes
+}
+
+fn engage_chunked_merge_fallback(scan: &mut CollectedScan, root: &Path) {
+    if scan.fallback_tree.is_some() {
+        return;
+    }
+
+    let mut tree = FileTree::new(root.to_path_buf());
+    for _ in 0..scan.total_dirs {
+        tree.increment_dirs();
+    }
+    scan.total_dirs = 0;
+
+    for entry in scan.files.drain(..) {
+        let relative_path = entry.path.clone();
+        tree.insert(relative_path, entry);
+    }
+
+    scan.collector_bytes = 0;
+    scan.fallback_triggered = true;
+    scan.fallback_tree = Some(tree);
 }
 
 #[cfg(test)]
@@ -372,6 +446,62 @@ mod tests {
         let seq_paths: HashSet<_> = sequential.paths().cloned().collect();
         let par_paths: HashSet<_> = parallel.paths().cloned().collect();
         assert_eq!(par_paths, seq_paths);
+    }
+
+    #[test]
+    fn test_parallel_fallback_threshold_preserves_parity() {
+        let temp = TempDir::new().expect("create temp dir");
+        fs::create_dir_all(temp.path().join("sub")).expect("create sub");
+        for i in 0..64 {
+            let path = if i % 2 == 0 {
+                temp.path().join(format!("file_{i}.txt"))
+            } else {
+                temp.path().join("sub").join(format!("nested_{i}.txt"))
+            };
+            fs::write(path, format!("payload-{i}")).expect("write file");
+        }
+
+        let config = Config {
+            source: temp.path().to_path_buf(),
+            destination: temp.path().join("dest"),
+            threads: 4,
+            ..Config::default()
+        };
+
+        let seq_tree = scan_directory(temp.path(), &config, None).expect("sequential scan");
+        let (par_tree, fallback_triggered) =
+            scan_directory_parallel_with_limit(temp.path(), &config, None, 1)
+                .expect("parallel scan");
+
+        assert!(
+            fallback_triggered,
+            "fallback should trigger at tiny memory limit"
+        );
+        assert_eq!(seq_tree.total_files, par_tree.total_files);
+        assert_eq!(seq_tree.total_size, par_tree.total_size);
+        assert_eq!(seq_tree.total_dirs, par_tree.total_dirs);
+
+        let seq_paths: HashSet<_> = seq_tree.paths().cloned().collect();
+        let par_paths: HashSet<_> = par_tree.paths().cloned().collect();
+        assert_eq!(seq_paths, par_paths);
+    }
+
+    #[test]
+    fn test_parallel_fallback_not_triggered_with_large_limit() {
+        let temp = TempDir::new().expect("create temp dir");
+        fs::write(temp.path().join("small.txt"), b"small").expect("write file");
+
+        let config = Config {
+            source: temp.path().to_path_buf(),
+            destination: temp.path().join("dest"),
+            threads: 2,
+            ..Config::default()
+        };
+
+        let (_tree, fallback_triggered) =
+            scan_directory_parallel_with_limit(temp.path(), &config, None, 1024 * 1024)
+                .expect("parallel scan");
+        assert!(!fallback_triggered);
     }
 
     #[test]

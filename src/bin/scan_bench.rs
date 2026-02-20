@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 struct BenchResult {
     sequential: Vec<Duration>,
     parallel: Vec<Duration>,
+    peak_rss_kib: Option<u64>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -45,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut result = BenchResult {
         sequential: Vec::with_capacity(runs),
         parallel: Vec::with_capacity(runs),
+        peak_rss_kib: peak_rss_kib(),
     };
 
     for i in 0..runs {
@@ -60,6 +62,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         result.sequential.push(seq_elapsed);
         result.parallel.push(par_elapsed);
+        result.peak_rss_kib = match (result.peak_rss_kib, peak_rss_kib()) {
+            (Some(current), Some(sample)) => Some(current.max(sample)),
+            (None, Some(sample)) => Some(sample),
+            (current, None) => current,
+        };
 
         println!(
             "run {:>2}: seq={:>8.3} ms  par={:>8.3} ms",
@@ -81,6 +88,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  sequential avg: {:>8.3} ms", seq_avg);
     println!("  parallel   avg: {:>8.3} ms", par_avg);
     println!("  speedup       : {:>8.2}x", speedup);
+    if let Some(peak_rss_kib) = result.peak_rss_kib {
+        println!(
+            "  peak RSS      : {:>8.2} MiB",
+            peak_rss_kib as f64 / 1024.0
+        );
+    }
 
     Ok(())
 }
@@ -107,4 +120,19 @@ fn assert_parity(seq: &kopy::FileTree, par: &kopy::FileTree) -> Result<(), Strin
         ));
     }
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn peak_rss_kib() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let vm_hwm = status.lines().find(|line| line.starts_with("VmHWM:"))?;
+    vm_hwm
+        .split_whitespace()
+        .nth(1)
+        .and_then(|value| value.parse::<u64>().ok())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn peak_rss_kib() -> Option<u64> {
+    None
 }
