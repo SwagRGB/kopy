@@ -91,7 +91,7 @@ pub fn run(config: Config) -> Result<(), KopyError> {
         progress.start_transfer(plan.stats.total_files as u64);
     }
 
-    let transfer_total = plan.stats.total_files as usize;
+    let transfer_total = plan.stats.total_files;
     let delete_total = plan.stats.delete_count;
     let error_records: Arc<Mutex<Vec<ErrorRecord>>> = Arc::new(Mutex::new(Vec::new()));
     let progress_cb = {
@@ -196,7 +196,57 @@ fn run_single_file_sync(config: Config) -> Result<(), KopyError> {
         return Ok(());
     }
 
-    execute_plan(&plan, &single_file_config, None)?;
+    let reporter = Arc::new(Mutex::new(ProgressReporter::new()));
+    if let Ok(mut progress) = reporter.lock() {
+        progress.start_transfer(plan.stats.total_files as u64);
+    }
+
+    let transfer_total = plan.stats.total_files;
+    let delete_total = plan.stats.delete_count;
+    let progress_cb = {
+        let reporter = Arc::clone(&reporter);
+        move |event: &ExecutionEvent| match event {
+            ExecutionEvent::ActionStart { action, path, .. } => {
+                if let Ok(progress) = reporter.lock() {
+                    progress.set_current_file(action, path.as_deref());
+                }
+            }
+            ExecutionEvent::ActionSuccess {
+                action,
+                bytes_copied,
+                ..
+            } => {
+                if is_transfer_action(action) {
+                    if let Ok(mut progress) = reporter.lock() {
+                        progress.complete_transfer_file(*bytes_copied);
+                    }
+                }
+            }
+            ExecutionEvent::ActionError {
+                action,
+                path,
+                error,
+                ..
+            } => {
+                if let Ok(progress) = reporter.lock() {
+                    progress.transfer_error(action, path.as_deref(), &error.to_string());
+                }
+            }
+            ExecutionEvent::Complete { stats } => {
+                if let Ok(progress) = reporter.lock() {
+                    progress.finish_transfer(
+                        stats.completed_actions,
+                        stats.failed_actions,
+                        stats.bytes_copied,
+                        transfer_total,
+                        delete_total,
+                    );
+                }
+            }
+        }
+    };
+
+    execute_plan(&plan, &single_file_config, Some(&progress_cb))?;
     Ok(())
 }
 
