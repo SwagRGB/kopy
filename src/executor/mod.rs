@@ -332,6 +332,7 @@ fn build_error_summary(errors: &[(Option<PathBuf>, KopyError)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ScanMode;
     use crate::types::FileEntry;
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, UNIX_EPOCH};
@@ -347,6 +348,7 @@ mod tests {
             exclude_patterns: vec![],
             include_patterns: vec![],
             threads: 1,
+            scan_mode: ScanMode::Auto,
             bandwidth_limit: None,
             backup_dir: None,
             watch: false,

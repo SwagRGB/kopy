@@ -1,7 +1,7 @@
 //! Configuration management
 
 use super::types::DeleteMode;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::path::{Component, Path, PathBuf};
 
 /// kopy - Modern file synchronization tool
@@ -38,6 +38,21 @@ pub struct Cli {
     /// Include patterns (can be specified multiple times)
     #[arg(long, short = 'i')]
     pub include: Vec<String>,
+
+    /// Scan strategy: auto chooses based on sampled tree shape.
+    #[arg(long, value_enum, default_value_t = ScanMode::Auto)]
+    pub scan_mode: ScanMode,
+}
+
+/// Directory scan execution mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ScanMode {
+    /// Choose sequential/parallel based on sampled tree shape.
+    Auto,
+    /// Force sequential scanner.
+    Sequential,
+    /// Force parallel scanner.
+    Parallel,
 }
 
 /// Global configuration for kopy
@@ -67,6 +82,9 @@ pub struct Config {
     /// Number of worker threads.
     pub threads: usize,
 
+    /// Directory scan mode.
+    pub scan_mode: ScanMode,
+
     /// Bandwidth limit (bytes/sec, None = unlimited)
     pub bandwidth_limit: Option<u64>,
 
@@ -91,6 +109,7 @@ impl Default for Config {
             exclude_patterns: Vec::new(),
             include_patterns: Vec::new(),
             threads: 4,
+            scan_mode: ScanMode::Auto,
             bandwidth_limit: None,
             backup_dir: None,
             watch: false,
@@ -277,6 +296,7 @@ impl TryFrom<Cli> for Config {
             delete_mode,
             exclude_patterns: cli.exclude,
             include_patterns: cli.include,
+            scan_mode: cli.scan_mode,
             ..Default::default()
         };
 
@@ -313,6 +333,7 @@ mod tests {
         assert!(!config.checksum_mode);
         assert!(config.exclude_patterns.is_empty());
         assert!(config.include_patterns.is_empty());
+        assert_eq!(config.scan_mode, ScanMode::Auto);
     }
 
     #[test]
@@ -539,6 +560,7 @@ mod tests {
             delete_permanent: false,
             exclude: vec!["*.tmp".to_string()],
             include: vec!["*.rs".to_string()],
+            scan_mode: ScanMode::Auto,
         };
 
         let config = Config::try_from(cli).unwrap();
@@ -546,6 +568,7 @@ mod tests {
         assert_eq!(config.delete_mode, DeleteMode::Trash);
         assert_eq!(config.exclude_patterns, vec!["*.tmp"]);
         assert_eq!(config.include_patterns, vec!["*.rs"]);
+        assert_eq!(config.scan_mode, ScanMode::Auto);
         assert!(!config.dry_run);
         assert!(!config.checksum_mode);
     }
@@ -564,6 +587,7 @@ mod tests {
             delete_permanent: true,
             exclude: vec![],
             include: vec![],
+            scan_mode: ScanMode::Auto,
         };
 
         let config = Config::try_from(cli).unwrap();
@@ -585,6 +609,7 @@ mod tests {
             delete_permanent: false,
             exclude: vec![],
             include: vec![],
+            scan_mode: ScanMode::Auto,
         };
 
         let config = Config::try_from(cli).unwrap();
@@ -606,6 +631,7 @@ mod tests {
             delete_permanent: false,
             exclude: vec![],
             include: vec![],
+            scan_mode: ScanMode::Auto,
         };
 
         let config = Config::try_from(cli).unwrap();
@@ -626,6 +652,7 @@ mod tests {
             delete_permanent: false,
             exclude: vec![],
             include: vec![],
+            scan_mode: ScanMode::Auto,
         };
 
         let result = Config::try_from(cli);
@@ -636,5 +663,18 @@ mod tests {
         } else {
             panic!("Expected Config error");
         }
+    }
+
+    #[test]
+    fn test_cli_parse_scan_mode_default_auto() {
+        let cli = Cli::try_parse_from(["kopy", "src", "dst"]).expect("parse cli");
+        assert_eq!(cli.scan_mode, ScanMode::Auto);
+    }
+
+    #[test]
+    fn test_cli_parse_scan_mode_parallel() {
+        let cli = Cli::try_parse_from(["kopy", "src", "dst", "--scan-mode", "parallel"])
+            .expect("parse cli");
+        assert_eq!(cli.scan_mode, ScanMode::Parallel);
     }
 }

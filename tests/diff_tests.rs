@@ -2,6 +2,7 @@
 //!
 //! Tests for the diff engine's ability to compare file trees and generate sync plans.
 
+use kopy::config::ScanMode;
 use kopy::diff::{compare_files, generate_sync_plan};
 use kopy::types::{DeleteMode, FileEntry, FileTree, SyncAction};
 use kopy::Config;
@@ -37,6 +38,7 @@ fn create_test_config(delete_mode: DeleteMode) -> Config {
         exclude_patterns: vec![],
         include_patterns: vec![],
         threads: 4,
+        scan_mode: ScanMode::Auto,
         bandwidth_limit: None,
         backup_dir: None,
         watch: false,

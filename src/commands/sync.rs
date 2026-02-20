@@ -2,7 +2,9 @@
 
 use crate::diff::generate_sync_plan;
 use crate::executor::{execute_plan, ExecutionEvent};
-use crate::scanner::scan_directory;
+use crate::scanner::{
+    resolve_scan_mode, scan_directory, scan_directory_parallel, ResolvedScanMode,
+};
 use crate::types::KopyError;
 use crate::ui::ProgressReporter;
 use crate::Config;
@@ -44,7 +46,7 @@ pub fn run(config: Config) -> Result<(), KopyError> {
             }
         })
     };
-    let src_tree = scan_directory(&config.source, &config, Some(&src_progress))?;
+    let src_tree = scan_with_mode(&config.source, &config, Some(&src_progress))?;
     if let Ok(progress) = reporter.lock() {
         progress.finish_scan("source", src_tree.total_files, src_tree.total_size);
         progress.start_scan("destination");
@@ -59,7 +61,7 @@ pub fn run(config: Config) -> Result<(), KopyError> {
                 }
             })
         };
-        scan_directory(&config.destination, &config, Some(&dest_progress))?
+        scan_with_mode(&config.destination, &config, Some(&dest_progress))?
     } else {
         crate::types::FileTree::new(config.destination.clone())
     };
@@ -146,6 +148,17 @@ pub fn run(config: Config) -> Result<(), KopyError> {
 
     result?;
     Ok(())
+}
+
+fn scan_with_mode(
+    root: &std::path::Path,
+    config: &Config,
+    progress: Option<&crate::scanner::ProgressCallback>,
+) -> Result<crate::types::FileTree, KopyError> {
+    match resolve_scan_mode(root, config)? {
+        ResolvedScanMode::Sequential => scan_directory(root, config, progress),
+        ResolvedScanMode::Parallel => scan_directory_parallel(root, config, progress),
+    }
 }
 
 fn is_transfer_action(action: &str) -> bool {

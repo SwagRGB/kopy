@@ -2,6 +2,7 @@
 //!
 //! Tests for Blake3 content hashing and checksum-based comparison
 
+use kopy::config::ScanMode;
 use kopy::diff::generate_sync_plan;
 use kopy::hash::compute_hash;
 use kopy::types::{DeleteMode, FileEntry, FileTree};
@@ -21,6 +22,7 @@ fn create_test_config(checksum_mode: bool) -> Config {
         exclude_patterns: vec![],
         include_patterns: vec![],
         threads: 4,
+        scan_mode: ScanMode::Auto,
         bandwidth_limit: None,
         backup_dir: None,
         watch: false,

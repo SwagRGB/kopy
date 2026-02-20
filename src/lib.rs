@@ -14,7 +14,7 @@ pub mod scanner;
 pub mod types;
 pub mod ui;
 
-pub use config::{Cli, Config};
+pub use config::{Cli, Config, ScanMode};
 pub use types::{DeleteMode, FileEntry, FileTree, KopyError, SyncAction};
 
 /// Library version
