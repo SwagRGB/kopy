@@ -9,6 +9,9 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 
 ### Added
 - Parallel scanner implementation (`scan_directory_parallel`) using ignore crate parallel traversal with parity-focused filtering behavior.
+- Scan mode selection controls via `--scan-mode` (`auto`, `sequential`, `parallel`).
+- Auto scan-mode resolver with bounded probe heuristics for deep vs wide trees.
+- `scan_bench` utility binary for local sequential/parallel scanner benchmarking and parity checks.
 - Regression coverage for:
   - canonical-equal source/destination validation via symlink alias
   - file-vs-directory conflict planning paths
@@ -22,6 +25,8 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 
 ### Changed
 - Reduced mutex lock scope in parallel scanning workers to avoid serializing metadata/filter work under contention.
+- Sync scan path now routes through scan-mode resolution (manual override + auto default).
+- Parallel scan progress callback delivery is serialized and monotonic while remaining live during traversal.
 ## [0.4.12] - 2026-02-18
 
 ### Added
