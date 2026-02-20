@@ -320,6 +320,10 @@ fn test_diff_plan_stats() {
 
     assert_eq!(plan.stats.total_files, 2);
     assert_eq!(plan.stats.total_bytes, 3000); // 1000 + 2000
+    assert!(
+        plan.actions.iter().all(|action| !action.is_skip()),
+        "planner should not materialize per-file skip actions"
+    );
 }
 
 #[test]

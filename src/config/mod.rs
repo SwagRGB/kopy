@@ -226,10 +226,6 @@ fn is_strict_descendant(path: &Path, potential_ancestor: &Path) -> bool {
 ///
 /// This allows nested-path validation to work even when one side does not exist yet.
 fn canonical_or_normalized(path: &Path) -> Result<PathBuf, super::types::KopyError> {
-    if path.exists() {
-        return path.canonicalize().map_err(super::types::KopyError::Io);
-    }
-
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -238,7 +234,34 @@ fn canonical_or_normalized(path: &Path) -> Result<PathBuf, super::types::KopyErr
             .join(path)
     };
 
-    Ok(normalize_path(&absolute))
+    if absolute.exists() {
+        return absolute.canonicalize().map_err(super::types::KopyError::Io);
+    }
+
+    // Resolve symlinked parent components by canonicalizing nearest existing ancestor.
+    let mut ancestor = absolute.clone();
+    let mut suffix = Vec::new();
+    while !ancestor.exists() {
+        let Some(name) = ancestor.file_name() else {
+            break;
+        };
+        suffix.push(name.to_os_string());
+        if !ancestor.pop() {
+            break;
+        }
+    }
+
+    if ancestor.exists() {
+        let mut resolved = ancestor
+            .canonicalize()
+            .map_err(super::types::KopyError::Io)?;
+        for component in suffix.iter().rev() {
+            resolved.push(component);
+        }
+        Ok(normalize_path(&resolved))
+    } else {
+        Ok(normalize_path(&absolute))
+    }
 }
 
 /// Normalize `.` and `..` path components without touching filesystem state.
@@ -688,5 +711,30 @@ mod tests {
         let cli = Cli::try_parse_from(["kopy", "src", "dst", "--scan-mode", "parallel"])
             .expect("parse cli");
         assert_eq!(cli.scan_mode, ScanMode::Parallel);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_validation_fail_destination_nested_via_symlinked_parent_component() {
+        use std::os::unix::fs::symlink;
+
+        let src_dir = create_temp_dir();
+        let alias_parent = create_temp_dir();
+        let alias_path = alias_parent.path().join("alias");
+        symlink(src_dir.path(), &alias_path).expect("create alias symlink");
+
+        let config = Config {
+            source: src_dir.path().to_path_buf(),
+            destination: alias_path.join("nested"),
+            ..Default::default()
+        };
+
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(super::super::types::KopyError::Config(msg)) = result {
+            assert!(msg.contains("cannot be nested"));
+        } else {
+            panic!("Expected Config error");
+        }
     }
 }

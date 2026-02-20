@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 /// Generate a sync plan by comparing source and destination trees
 ///
-/// The plan includes copy/update/skip actions for source entries and optional delete
+/// The plan includes copy/update actions for source entries and optional delete
 /// actions for destination orphans when deletes are enabled.
 ///
 /// # Arguments
@@ -66,7 +66,7 @@ pub fn generate_sync_plan(src_tree: &FileTree, dest_tree: &FileTree, config: &Co
                 if !action.is_skip() {
                     plan.add_action(action);
                 } else {
-                    plan.add_action(SyncAction::Skip);
+                    plan.stats.skip_count += 1;
                 }
             }
         }

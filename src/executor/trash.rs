@@ -89,7 +89,8 @@ pub fn move_to_trash(
     let timestamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
 
     let trash_root = dest_root.join(".kopy_trash").join(&timestamp);
-    let trash_file_path = trash_root.join(relative_path);
+    let (trash_relative_path, trash_file_path) =
+        resolve_unique_trash_path(&trash_root, relative_path);
 
     if let Some(parent) = trash_file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
@@ -129,7 +130,7 @@ pub fn move_to_trash(
 
     manifest.add_file(DeletedFile {
         original_path: relative_path.to_string_lossy().to_string(),
-        trash_path: relative_path.to_string_lossy().to_string(),
+        trash_path: trash_relative_path.to_string_lossy().to_string(),
         deleted_at: Local::now().to_rfc3339(),
         size: file_size,
     });
@@ -140,6 +141,34 @@ pub fn move_to_trash(
     fs::write(&manifest_path, manifest_json).map_err(|e| map_file_error(&manifest_path, e))?;
 
     Ok(())
+}
+
+fn resolve_unique_trash_path(
+    trash_root: &Path,
+    relative_path: &Path,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let candidate_relative = relative_path.to_path_buf();
+    let candidate_absolute = trash_root.join(&candidate_relative);
+    if !candidate_absolute.exists() {
+        return (candidate_relative, candidate_absolute);
+    }
+
+    let parent = relative_path.parent().unwrap_or_else(|| Path::new(""));
+    let file_name = relative_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "item".to_string());
+
+    for idx in 1usize.. {
+        let unique_name = format!("{file_name}.~kopy{idx}");
+        let unique_relative = parent.join(unique_name);
+        let unique_absolute = trash_root.join(&unique_relative);
+        if !unique_absolute.exists() {
+            return (unique_relative, unique_absolute);
+        }
+    }
+
+    unreachable!("infinite candidate space for unique trash path");
 }
 
 fn map_file_error(path: &Path, error: Error) -> KopyError {
@@ -173,5 +202,30 @@ fn create_symlink(target: &Path, link_path: &Path) -> Result<(), Error> {
             Ok(()) => Ok(()),
             Err(_) => Err(file_err),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_unique_trash_path;
+    use std::fs;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_resolve_unique_trash_path_appends_suffix_on_collision() {
+        let temp = TempDir::new().expect("create temp dir");
+        let trash_root = temp.path();
+        let relative = Path::new("subdir/file.txt");
+
+        let first_abs = trash_root.join(relative);
+        fs::create_dir_all(first_abs.parent().expect("parent")).expect("create parent");
+        fs::write(&first_abs, b"first").expect("write first file");
+
+        let (unique_rel, unique_abs) = resolve_unique_trash_path(trash_root, relative);
+        assert_ne!(unique_rel, relative);
+        assert!(unique_rel.to_string_lossy().contains(".~kopy"));
+        assert_eq!(unique_abs, trash_root.join(&unique_rel));
+        assert!(!unique_abs.exists());
     }
 }
