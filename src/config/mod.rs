@@ -122,7 +122,7 @@ impl Config {
     /// Validate configuration
     ///
     /// Ensures:
-    /// - Source path exists and is a directory
+    /// - Source path exists and is a file or directory
     /// - Source and destination are different paths
     /// - All exclude and include patterns are valid glob patterns
     ///
@@ -149,15 +149,16 @@ impl Config {
             )));
         }
 
-        // 2. Check source is a directory
-        if !self.source.is_dir() {
+        let source_is_dir = self.source.is_dir();
+        let source_is_file = self.source.is_file();
+        if !source_is_dir && !source_is_file {
             return Err(super::types::KopyError::Config(format!(
-                "Source path must be a directory: {:?}",
+                "Source path must be a file or directory: {:?}",
                 self.source
             )));
         }
 
-        if self.destination.exists() && !self.destination.is_dir() {
+        if source_is_dir && self.destination.exists() && !self.destination.is_dir() {
             return Err(super::types::KopyError::Config(format!(
                 "Destination path must be a directory if it exists: {:?}",
                 self.destination
@@ -182,8 +183,9 @@ impl Config {
             )));
         }
 
-        if is_strict_descendant(&destination_normalized, &source_normalized)
-            || is_strict_descendant(&source_normalized, &destination_normalized)
+        if source_is_dir
+            && (is_strict_descendant(&destination_normalized, &source_normalized)
+                || is_strict_descendant(&source_normalized, &destination_normalized))
         {
             return Err(super::types::KopyError::Config(format!(
                 "Source and destination cannot be nested. source='{}', destination='{}'",
@@ -376,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validation_source_not_directory() {
+    fn test_validation_source_file_is_allowed() {
         let temp_dir = create_temp_dir();
         let file_path = create_temp_file(&temp_dir, "test.txt");
         let dest_dir = create_temp_dir();
@@ -388,13 +390,23 @@ mod tests {
         };
 
         let result = config.validate();
-        assert!(result.is_err());
+        assert!(result.is_ok());
+    }
 
-        if let Err(super::super::types::KopyError::Config(msg)) = result {
-            assert!(msg.contains("must be a directory"));
-        } else {
-            panic!("Expected Config error");
-        }
+    #[test]
+    fn test_validation_source_file_allows_destination_file() {
+        let temp_dir = create_temp_dir();
+        let file_path = create_temp_file(&temp_dir, "source.txt");
+        let destination_file = temp_dir.path().join("renamed.txt");
+
+        let config = Config {
+            source: file_path,
+            destination: destination_file,
+            ..Default::default()
+        };
+
+        let result = config.validate();
+        assert!(result.is_ok());
     }
 
     #[test]

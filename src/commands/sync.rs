@@ -1,11 +1,11 @@
 //! Main sync command
 
-use crate::diff::generate_sync_plan;
+use crate::diff::{compare_files, generate_sync_plan, DiffPlan};
 use crate::executor::{execute_plan, ExecutionEvent};
 use crate::scanner::{
     resolve_scan_mode, scan_directory, scan_directory_parallel, ResolvedScanMode,
 };
-use crate::types::KopyError;
+use crate::types::{FileEntry, FileTree, KopyError, SyncAction};
 use crate::ui::ProgressReporter;
 use crate::Config;
 use indicatif::HumanBytes;
@@ -33,6 +33,10 @@ use std::{collections::BTreeMap, path::PathBuf};
 /// # Ok::<(), kopy::types::KopyError>(())
 /// ```
 pub fn run(config: Config) -> Result<(), KopyError> {
+    if config.source.is_file() {
+        return run_single_file_sync(config);
+    }
+
     let reporter = Arc::new(Mutex::new(ProgressReporter::new()));
 
     if let Ok(progress) = reporter.lock() {
@@ -148,6 +152,128 @@ pub fn run(config: Config) -> Result<(), KopyError> {
 
     result?;
     Ok(())
+}
+
+fn run_single_file_sync(config: Config) -> Result<(), KopyError> {
+    if config.delete_mode != crate::types::DeleteMode::None {
+        eprintln!("Warning: delete flags are ignored when source is a single file.");
+    }
+
+    let source_entry = build_source_file_entry(&config.source)?;
+    let mut src_tree = FileTree::new(config.source.clone());
+    src_tree.insert(PathBuf::new(), source_entry.clone());
+
+    let resolved_destination = resolve_single_file_destination_path(&config)?;
+
+    let mut dest_tree = FileTree::new(resolved_destination.clone());
+    if let Some(dest_entry) = build_destination_file_entry(&resolved_destination)? {
+        dest_tree.insert(PathBuf::new(), dest_entry);
+    }
+
+    let mut single_file_config = config.clone();
+    single_file_config.delete_mode = crate::types::DeleteMode::None;
+    single_file_config.destination = resolved_destination;
+
+    let mut plan = DiffPlan::new();
+    match dest_tree.get(&PathBuf::new()) {
+        None => plan.add_action(SyncAction::CopyNew(source_entry)),
+        Some(dest_entry) => plan.add_action(compare_files(
+            &source_entry,
+            dest_entry,
+            &single_file_config,
+        )),
+    }
+    plan.sort_by_path();
+
+    print_plan_summary(&plan);
+    if config.dry_run {
+        print_dry_run_actions(&plan);
+        println!("Dry-run mode: no changes were made.");
+        return Ok(());
+    }
+    if !has_executable_actions(&plan) {
+        println!("Nothing to sync.");
+        return Ok(());
+    }
+
+    execute_plan(&plan, &single_file_config, None)?;
+    Ok(())
+}
+
+fn build_source_file_entry(source_path: &std::path::Path) -> Result<FileEntry, KopyError> {
+    let metadata = std::fs::symlink_metadata(source_path).map_err(KopyError::Io)?;
+    let mtime = metadata.modified().map_err(KopyError::Io)?;
+    #[cfg(unix)]
+    let permissions = {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode()
+    };
+    #[cfg(not(unix))]
+    let permissions = 0o644;
+
+    if metadata.file_type().is_symlink() {
+        let target = std::fs::read_link(source_path).map_err(KopyError::Io)?;
+        Ok(FileEntry::new_symlink(
+            PathBuf::new(),
+            metadata.len(),
+            mtime,
+            permissions,
+            target,
+        ))
+    } else {
+        Ok(FileEntry::new(
+            PathBuf::new(),
+            metadata.len(),
+            mtime,
+            permissions,
+        ))
+    }
+}
+
+fn resolve_single_file_destination_path(config: &Config) -> Result<PathBuf, KopyError> {
+    if config.destination.is_dir() {
+        let file_name = config
+            .source
+            .file_name()
+            .ok_or_else(|| KopyError::Config("Invalid source file name".to_string()))?;
+        Ok(config.destination.join(file_name))
+    } else {
+        Ok(config.destination.clone())
+    }
+}
+
+fn build_destination_file_entry(
+    destination_file: &std::path::Path,
+) -> Result<Option<FileEntry>, KopyError> {
+    let metadata = match std::fs::symlink_metadata(destination_file) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(KopyError::Io(err)),
+    };
+
+    if metadata.file_type().is_dir() {
+        return Err(KopyError::Config(format!(
+            "Destination resolves to a directory, expected file path: {}",
+            destination_file.display(),
+        )));
+    }
+
+    let mtime = metadata.modified().map_err(KopyError::Io)?;
+    #[cfg(unix)]
+    let permissions = {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode()
+    };
+    #[cfg(not(unix))]
+    let permissions = 0o644;
+
+    let entry = if metadata.file_type().is_symlink() {
+        let target = std::fs::read_link(destination_file).map_err(KopyError::Io)?;
+        FileEntry::new_symlink(PathBuf::new(), metadata.len(), mtime, permissions, target)
+    } else {
+        FileEntry::new(PathBuf::new(), metadata.len(), mtime, permissions)
+    };
+    Ok(Some(entry))
 }
 
 fn scan_with_mode(

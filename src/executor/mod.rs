@@ -158,8 +158,7 @@ pub fn execute_plan(
 fn execute_action(action: &SyncAction, config: &Config) -> Result<u64, KopyError> {
     match action {
         SyncAction::CopyNew(entry) | SyncAction::Overwrite(entry) => {
-            let src_path = config.source.join(&entry.path);
-            let dest_path = config.destination.join(&entry.path);
+            let (src_path, dest_path) = resolve_transfer_paths(config, &entry.path)?;
             if entry.is_symlink {
                 copy_symlink(&src_path, &dest_path, entry)
             } else {
@@ -171,6 +170,32 @@ fn execute_action(action: &SyncAction, config: &Config) -> Result<u64, KopyError
         SyncAction::Move { .. } => Err(KopyError::Validation(
             "Move action is not supported by this executor".to_string(),
         )),
+    }
+}
+
+fn resolve_transfer_paths(
+    config: &Config,
+    relative_path: &std::path::Path,
+) -> Result<(PathBuf, PathBuf), KopyError> {
+    if config.source.is_file() {
+        let src_path = config.source.clone();
+        let dest_path = if config.destination.is_dir() {
+            let file_name = config.source.file_name().ok_or_else(|| {
+                KopyError::Config(format!(
+                    "Unable to determine source file name: {}",
+                    config.source.display()
+                ))
+            })?;
+            config.destination.join(file_name)
+        } else {
+            config.destination.clone()
+        };
+        Ok((src_path, dest_path))
+    } else {
+        Ok((
+            config.source.join(relative_path),
+            config.destination.join(relative_path),
+        ))
     }
 }
 

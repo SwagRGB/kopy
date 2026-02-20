@@ -6,8 +6,10 @@ use kopy::config::ScanMode;
 use kopy::diff::{compare_files, generate_sync_plan};
 use kopy::types::{DeleteMode, FileEntry, FileTree, SyncAction};
 use kopy::Config;
+use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, UNIX_EPOCH};
+use tempfile::TempDir;
 
 fn create_test_entry(name: &str, size: u64, mtime_secs: u64) -> FileEntry {
     FileEntry::new(
@@ -97,6 +99,41 @@ fn test_compare_identical() {
     let action = compare_files(&src, &dest, &config);
 
     assert!(action.is_skip(), "Identical files should Skip");
+}
+
+#[test]
+fn test_compare_checksum_single_file_source_uses_direct_file_paths() {
+    let src_dir = TempDir::new().expect("create src tempdir");
+    let dst_dir = TempDir::new().expect("create dst tempdir");
+    let src_file = src_dir.path().join("a.txt");
+    let dst_file = dst_dir.path().join("b.txt");
+    fs::write(&src_file, b"identical").expect("write src file");
+    fs::write(&dst_file, b"identical").expect("write dst file");
+
+    let src_meta = fs::metadata(&src_file).expect("metadata src");
+    let dest_meta = fs::metadata(&dst_file).expect("metadata dest");
+    let src = FileEntry::new(
+        PathBuf::new(),
+        src_meta.len(),
+        src_meta.modified().expect("mtime"),
+        0o644,
+    );
+    let dest = FileEntry::new(
+        PathBuf::new(),
+        dest_meta.len(),
+        dest_meta.modified().expect("mtime"),
+        0o644,
+    );
+
+    let config = Config {
+        source: src_file,
+        destination: dst_file,
+        checksum_mode: true,
+        ..create_test_config(DeleteMode::None)
+    };
+
+    let action = compare_files(&src, &dest, &config);
+    assert!(action.is_skip(), "matching file contents should skip");
 }
 
 #[test]

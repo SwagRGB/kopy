@@ -62,8 +62,7 @@ pub fn compare_files(src: &FileEntry, dest: &FileEntry, config: &Config) -> Sync
     }
 
     if config.checksum_mode {
-        let src_path = config.source.join(&src.path);
-        let dest_path = config.destination.join(&dest.path);
+        let (src_path, dest_path) = resolve_compare_paths(src, dest, config);
 
         let src_hash = match src.hash {
             Some(hash) => hash,
@@ -97,4 +96,19 @@ pub fn compare_files(src: &FileEntry, dest: &FileEntry, config: &Config) -> Sync
         std::cmp::Ordering::Less => SyncAction::Skip,
         std::cmp::Ordering::Equal => SyncAction::Skip,
     }
+}
+
+fn resolve_compare_paths(
+    src: &FileEntry,
+    dest: &FileEntry,
+    config: &Config,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    if config.source.is_file() {
+        return (config.source.clone(), config.destination.clone());
+    }
+
+    (
+        config.source.join(&src.path),
+        config.destination.join(&dest.path),
+    )
 }

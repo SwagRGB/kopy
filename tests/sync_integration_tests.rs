@@ -103,3 +103,62 @@ fn test_sync_respects_exclude_patterns() {
         "excluded file should not be copied"
     );
 }
+
+#[test]
+fn test_sync_single_file_source_to_existing_destination_directory() {
+    let src = TempDir::new().expect("create src tempdir");
+    let dst = TempDir::new().expect("create dst tempdir");
+    let source_file = src.path().join("one.txt");
+    fs::write(&source_file, b"single-file").expect("write source file");
+
+    run(config_for(&source_file, dst.path())).expect("single file sync should succeed");
+
+    assert_eq!(
+        fs::read(dst.path().join("one.txt")).expect("read copied destination file"),
+        b"single-file"
+    );
+}
+
+#[test]
+fn test_sync_single_file_source_to_destination_file_path() {
+    let src = TempDir::new().expect("create src tempdir");
+    let dst = TempDir::new().expect("create dst tempdir");
+    let source_file = src.path().join("source.txt");
+    let destination_file = dst.path().join("renamed.txt");
+    fs::write(&source_file, b"renamed-target").expect("write source file");
+
+    run(config_for(&source_file, &destination_file)).expect("single file sync should succeed");
+
+    assert_eq!(
+        fs::read(destination_file).expect("read copied destination file"),
+        b"renamed-target"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_sync_single_file_checksum_is_idempotent_with_destination_directory() {
+    use std::os::unix::fs::MetadataExt;
+
+    let src = TempDir::new().expect("create src tempdir");
+    let dst = TempDir::new().expect("create dst tempdir");
+    let source_file = src.path().join("one.txt");
+    fs::write(&source_file, b"stable-content").expect("write source file");
+
+    let mut config = config_for(&source_file, dst.path());
+    config.checksum_mode = true;
+
+    run(config.clone()).expect("first checksum sync should succeed");
+    let dest_path = dst.path().join("one.txt");
+    let first_inode = fs::metadata(&dest_path).expect("read first metadata").ino();
+
+    run(config).expect("second checksum sync should succeed");
+    let second_inode = fs::metadata(&dest_path)
+        .expect("read second metadata")
+        .ino();
+
+    assert_eq!(
+        first_inode, second_inode,
+        "idempotent checksum sync should not rewrite destination file"
+    );
+}
