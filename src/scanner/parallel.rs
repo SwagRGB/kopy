@@ -10,6 +10,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+/// Default collector budget before switching to direct `FileTree` insertion mode.
 const DEFAULT_COLLECTOR_MEMORY_LIMIT_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(Default)]
@@ -45,6 +46,8 @@ pub fn scan_directory_parallel(
     Ok(tree)
 }
 
+/// Internal variant with configurable collector memory limit.
+/// Returns `(tree, fallback_triggered)` for test/benchmark visibility.
 fn scan_directory_parallel_with_limit(
     root_path: &Path,
     config: &Config,
@@ -213,6 +216,7 @@ fn scan_directory_parallel_with_limit(
             };
 
             if let Some(callback) = on_progress {
+                // Keep callback delivery serialized and monotonic across workers.
                 let mut state = match progress.lock() {
                     Ok(state) => state,
                     Err(_) => return WalkState::Quit,
@@ -278,10 +282,11 @@ fn estimated_entry_bytes(entry: &FileEntry) -> u64 {
         .as_ref()
         .map(|target| target.to_string_lossy().len() as u64)
         .unwrap_or(0);
-    // Includes entry metadata and path storage overhead estimate.
+    // Lightweight approximation used only for fallback triggering.
     256 + path_bytes + symlink_bytes
 }
 
+/// Moves buffered entries into a `FileTree` once collector memory crosses threshold.
 fn engage_chunked_merge_fallback(scan: &mut CollectedScan, root: &Path) {
     if scan.fallback_tree.is_some() {
         return;

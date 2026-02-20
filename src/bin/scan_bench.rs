@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 struct BenchResult {
     sequential: Vec<Duration>,
     parallel: Vec<Duration>,
+    // Linux peak resident set size in KiB (VmHWM).
     peak_rss_kib: Option<u64>,
 }
 
@@ -106,6 +107,7 @@ fn average_ms(values: &[Duration]) -> f64 {
     sum_ms / values.len() as f64
 }
 
+/// Ensures both scanners produce equivalent aggregate output for this benchmark run.
 fn assert_parity(seq: &kopy::FileTree, par: &kopy::FileTree) -> Result<(), String> {
     if seq.total_files != par.total_files {
         return Err(format!(
@@ -124,6 +126,7 @@ fn assert_parity(seq: &kopy::FileTree, par: &kopy::FileTree) -> Result<(), Strin
 
 #[cfg(target_os = "linux")]
 fn peak_rss_kib() -> Option<u64> {
+    // VmHWM is the kernel-reported peak RSS for the current process.
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let vm_hwm = status.lines().find(|line| line.starts_with("VmHWM:"))?;
     vm_hwm
