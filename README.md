@@ -54,14 +54,14 @@ Main flags:
 - `--include <glob>` (repeatable, overrides matching excludes)
 
 Notes:
-- Source must exist and be a directory.
+- Source must exist and be a file or directory.
 - Source and destination cannot be equal or nested within each other.
 
 ## Limitations
 - Current scope is local filesystem sync (no remote/SSH sync yet).
 - Execution is currently single-threaded; parallel transfer is planned.
 - Dry-run output is intentionally concise and may omit unchanged file paths.
-- Windows symlink behavior can depend on permissions and system policy.
+- Linux-only runtime support (Windows/macOS are currently out of scope).
 
 ## Contributing
 ```bash

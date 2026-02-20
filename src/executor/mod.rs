@@ -241,17 +241,17 @@ fn create_symlink(target: &std::path::Path, link_path: &std::path::Path) -> Resu
     std::os::unix::fs::symlink(target, link_path).map_err(KopyError::Io)
 }
 
-#[cfg(windows)]
+#[cfg(not(unix))]
 fn create_symlink(target: &std::path::Path, link_path: &std::path::Path) -> Result<(), KopyError> {
-    use std::os::windows::fs::{symlink_dir, symlink_file};
-
-    match symlink_file(target, link_path) {
-        Ok(()) => Ok(()),
-        Err(file_err) => match symlink_dir(target, link_path) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(KopyError::Io(file_err)),
-        },
-    }
+    let error = std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        format!(
+            "Symlink copy is unsupported on this platform: {} -> {}",
+            target.display(),
+            link_path.display()
+        ),
+    );
+    Err(KopyError::Io(error))
 }
 
 /// Execute delete behavior according to configured delete mode.

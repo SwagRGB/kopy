@@ -193,16 +193,16 @@ fn create_symlink(target: &Path, link_path: &Path) -> Result<(), Error> {
     std::os::unix::fs::symlink(target, link_path)
 }
 
-#[cfg(windows)]
+#[cfg(not(unix))]
 fn create_symlink(target: &Path, link_path: &Path) -> Result<(), Error> {
-    use std::os::windows::fs::{symlink_dir, symlink_file};
-    match symlink_file(target, link_path) {
-        Ok(()) => Ok(()),
-        Err(file_err) => match symlink_dir(target, link_path) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(file_err),
-        },
-    }
+    Err(Error::new(
+        ErrorKind::Unsupported,
+        format!(
+            "Symlink trash move is unsupported on this platform: {} -> {}",
+            target.display(),
+            link_path.display()
+        ),
+    ))
 }
 
 #[cfg(test)]
