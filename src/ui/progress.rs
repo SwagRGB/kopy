@@ -25,7 +25,6 @@ impl ProgressReporter {
     /// ```
     pub fn new() -> Self {
         let scan_bar = ProgressBar::new_spinner();
-        scan_bar.enable_steady_tick(std::time::Duration::from_millis(120));
         if let Ok(style) = ProgressStyle::with_template("{spinner} {msg}") {
             scan_bar.set_style(style.tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "));
         }
@@ -47,6 +46,8 @@ impl ProgressReporter {
 
     /// Mark start of a scanning phase.
     pub fn start_scan(&self, label: &str) {
+        self.scan_bar
+            .enable_steady_tick(std::time::Duration::from_millis(120));
         self.scan_bar.set_message(format!("Scanning {}...", label));
     }
 
@@ -120,6 +121,11 @@ impl ProgressReporter {
         transfers: usize,
         deletes: usize,
     ) {
+        let expected_pos = transfers as u64;
+        if self.transfer_bar.position() < expected_pos {
+            self.transfer_bar.set_position(expected_pos);
+        }
+
         let throughput = self.current_throughput_bps();
         let summary = format!(
             "Actions complete: {} succeeded, {} failed | {} transfers, {} deletes | {} total | {}/s",
@@ -214,5 +220,14 @@ mod tests {
         reporter.start_scan("source");
         reporter.update_scan("source", 3, 2048);
         reporter.finish_scan("source", 3, 2048);
+    }
+
+    #[test]
+    fn test_finish_transfer_forces_final_position() {
+        let mut reporter = ProgressReporter::new();
+        reporter.start_transfer(1);
+        reporter.finish_transfer(1, 0, 16, 1, 0);
+        assert_eq!(reporter.transfer_bar.position(), 1);
+        assert_eq!(reporter.transfer_bar.length(), Some(1));
     }
 }
