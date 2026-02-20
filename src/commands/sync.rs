@@ -130,7 +130,8 @@ pub fn run(config: Config) -> Result<(), KopyError> {
                 }
             }
             ExecutionEvent::Complete { stats } => {
-                if let Ok(progress) = reporter.lock() {
+                if let Ok(mut progress) = reporter.lock() {
+                    progress.reconcile_transfer_completion(transfer_total, stats.bytes_copied);
                     progress.finish_transfer(
                         stats.completed_actions,
                         stats.failed_actions,
@@ -233,7 +234,8 @@ fn run_single_file_sync(config: Config) -> Result<(), KopyError> {
                 }
             }
             ExecutionEvent::Complete { stats } => {
-                if let Ok(progress) = reporter.lock() {
+                if let Ok(mut progress) = reporter.lock() {
+                    progress.reconcile_transfer_completion(transfer_total, stats.bytes_copied);
                     progress.finish_transfer(
                         stats.completed_actions,
                         stats.failed_actions,

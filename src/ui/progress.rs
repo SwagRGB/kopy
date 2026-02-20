@@ -121,7 +121,7 @@ impl ProgressReporter {
         deletes: usize,
     ) {
         let throughput = self.current_throughput_bps();
-        self.transfer_bar.finish_with_message(format!(
+        let summary = format!(
             "Actions complete: {} succeeded, {} failed | {} transfers, {} deletes | {} total | {}/s",
             succeeded,
             failed,
@@ -129,7 +129,22 @@ impl ProgressReporter {
             deletes,
             HumanBytes(bytes),
             HumanBytes(throughput)
-        ));
+        );
+        // Keep a plain summary line in scrollback for very fast runs where the bar is easy to miss.
+        self.transfer_bar.println(summary.clone());
+        self.transfer_bar.finish_with_message(summary);
+    }
+
+    /// Reconcile transfer counters at phase completion.
+    ///
+    /// This ensures very fast runs still end at `len/len` even if callback timing skipped
+    /// intermediate bar refreshes.
+    pub fn reconcile_transfer_completion(&mut self, transfers: usize, bytes: u64) {
+        self.transferred_bytes = self.transferred_bytes.max(bytes);
+        let expected_pos = transfers as u64;
+        if self.transfer_bar.position() < expected_pos {
+            self.transfer_bar.set_position(expected_pos);
+        }
     }
 
     fn current_throughput_bps(&self) -> u64 {
