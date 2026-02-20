@@ -12,10 +12,12 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 - Scan mode selection controls via `--scan-mode` (`auto`, `sequential`, `parallel`).
 - Auto scan-mode resolver with bounded probe heuristics for deep vs wide trees.
 - `scan_bench` utility binary for local sequential/parallel scanner benchmarking and parity checks.
+- Peak RSS reporting in `scan_bench` (Linux `VmHWM`) for memory profiling runs.
 - Regression coverage for:
   - canonical-equal source/destination validation via symlink alias
   - file-vs-directory conflict planning paths
   - `DeleteMode::None` non-destructive delete behavior
+  - parallel collector fallback trigger/no-trigger scenarios with sequential parity validation
 
 ### Fixed
 - Reject source/destination roots that resolve to the same canonical directory (not only nested paths).
@@ -27,6 +29,7 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 - Reduced mutex lock scope in parallel scanning workers to avoid serializing metadata/filter work under contention.
 - Sync scan path now routes through scan-mode resolution (manual override + auto default).
 - Parallel scan progress callback delivery is serialized and monotonic while remaining live during traversal.
+- Parallel scanner now switches from buffered collection to direct `FileTree` insertion when collector memory estimate exceeds threshold.
 ## [0.4.12] - 2026-02-18
 
 ### Added
