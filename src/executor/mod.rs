@@ -1,6 +1,7 @@
 //! Executor module for file operations
 
 pub mod copy;
+pub mod pool;
 pub mod trash;
 
 use crate::diff::DiffPlan;
@@ -57,6 +58,7 @@ pub enum ExecutionEvent {
 pub type ExecutionCallback = dyn Fn(&ExecutionEvent) + Send + Sync;
 
 pub use copy::copy_file_atomic;
+pub use pool::{ParallelExecutor, PoolStats, TransferJob};
 pub use trash::move_to_trash;
 
 /// Execute a sync plan
