@@ -10,6 +10,7 @@ use crate::Config;
 use std::fs;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
+use std::thread;
 
 /// Execution progress statistics for a sync run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -60,6 +61,8 @@ pub type ExecutionCallback = dyn Fn(&ExecutionEvent) + Send + Sync;
 pub use copy::copy_file_atomic;
 pub use pool::{ParallelExecutor, PoolStats, TransferJob};
 pub use trash::move_to_trash;
+
+const LARGE_TRANSFER_THRESHOLD_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Execute a sync plan
 ///
@@ -157,6 +160,94 @@ pub fn execute_plan(
     }
 }
 
+/// Execute a sync plan using parallel workers for small transfer actions.
+///
+/// Ordering contract:
+/// - Small transfer actions (CopyNew/Overwrite <= threshold) run concurrently.
+/// - Large transfer actions and non-transfer actions run sequentially.
+/// - Sequential actions form ordering barriers: queued small transfers are drained first.
+pub fn execute_plan_parallel(
+    plan: &DiffPlan,
+    config: &Config,
+    on_event: Option<&ExecutionCallback>,
+) -> Result<ExecutionStats, KopyError> {
+    let mut stats = ExecutionStats {
+        total_actions: plan.actions.len(),
+        ..Default::default()
+    };
+    let mut errors: Vec<(Option<PathBuf>, KopyError)> = Vec::new();
+
+    let worker_count = config.threads.max(1);
+    let total = stats.total_actions;
+    let shared_config = config.clone();
+    let mut in_flight: Vec<thread::JoinHandle<ParallelTransferResult>> = Vec::new();
+
+    for (idx, action) in plan.actions.iter().enumerate() {
+        let index = idx + 1;
+        if is_small_parallel_transfer(action) {
+            emit_event(
+                on_event,
+                ExecutionEvent::ActionStart {
+                    index,
+                    total,
+                    action: action.action_name(),
+                    path: action.path().cloned(),
+                },
+            );
+
+            let action_clone = action.clone();
+            let config_clone = shared_config.clone();
+            in_flight.push(thread::spawn(move || {
+                let action_name = action_clone.action_name();
+                let path = action_clone.path().cloned();
+                let result = execute_action(&action_clone, &config_clone);
+                ParallelTransferResult {
+                    index,
+                    total,
+                    action_name,
+                    path,
+                    result,
+                }
+            }));
+
+            if in_flight.len() >= worker_count {
+                let handle = in_flight.remove(0);
+                let result = handle.join().map_err(|_| {
+                    KopyError::Validation("parallel worker thread panicked".to_string())
+                })?;
+                apply_parallel_result(result, on_event, &mut stats, &mut errors);
+            }
+            continue;
+        }
+
+        drain_parallel_handles(&mut in_flight, on_event, &mut stats, &mut errors)?;
+        execute_action_with_events(
+            action,
+            index,
+            total,
+            &shared_config,
+            on_event,
+            &mut stats,
+            &mut errors,
+        );
+    }
+
+    drain_parallel_handles(&mut in_flight, on_event, &mut stats, &mut errors)?;
+
+    emit_event(
+        on_event,
+        ExecutionEvent::Complete {
+            stats: stats.clone(),
+        },
+    );
+
+    if errors.is_empty() {
+        Ok(stats)
+    } else {
+        Err(KopyError::Validation(build_error_summary(&errors)))
+    }
+}
+
 fn execute_action(action: &SyncAction, config: &Config) -> Result<u64, KopyError> {
     match action {
         SyncAction::CopyNew(entry) | SyncAction::Overwrite(entry) => {
@@ -173,6 +264,127 @@ fn execute_action(action: &SyncAction, config: &Config) -> Result<u64, KopyError
             "Move action is not supported by this executor".to_string(),
         )),
     }
+}
+
+#[derive(Debug)]
+struct ParallelTransferResult {
+    index: usize,
+    total: usize,
+    action_name: &'static str,
+    path: Option<PathBuf>,
+    result: Result<u64, KopyError>,
+}
+
+fn execute_action_with_events(
+    action: &SyncAction,
+    index: usize,
+    total: usize,
+    config: &Config,
+    on_event: Option<&ExecutionCallback>,
+    stats: &mut ExecutionStats,
+    errors: &mut Vec<(Option<PathBuf>, KopyError)>,
+) {
+    emit_event(
+        on_event,
+        ExecutionEvent::ActionStart {
+            index,
+            total,
+            action: action.action_name(),
+            path: action.path().cloned(),
+        },
+    );
+
+    match execute_action(action, config) {
+        Ok(bytes) => {
+            stats.completed_actions += 1;
+            stats.bytes_copied += bytes;
+            emit_event(
+                on_event,
+                ExecutionEvent::ActionSuccess {
+                    index,
+                    total,
+                    action: action.action_name(),
+                    path: action.path().cloned(),
+                    bytes_copied: bytes,
+                },
+            );
+        }
+        Err(err) => {
+            stats.failed_actions += 1;
+            emit_event(
+                on_event,
+                ExecutionEvent::ActionError {
+                    index,
+                    total,
+                    action: action.action_name(),
+                    path: action.path().cloned(),
+                    error: clone_error_for_event(&err),
+                },
+            );
+            errors.push((action.path().cloned(), err));
+        }
+    }
+}
+
+fn apply_parallel_result(
+    result: ParallelTransferResult,
+    on_event: Option<&ExecutionCallback>,
+    stats: &mut ExecutionStats,
+    errors: &mut Vec<(Option<PathBuf>, KopyError)>,
+) {
+    match result.result {
+        Ok(bytes) => {
+            stats.completed_actions += 1;
+            stats.bytes_copied += bytes;
+            emit_event(
+                on_event,
+                ExecutionEvent::ActionSuccess {
+                    index: result.index,
+                    total: result.total,
+                    action: result.action_name,
+                    path: result.path,
+                    bytes_copied: bytes,
+                },
+            );
+        }
+        Err(err) => {
+            stats.failed_actions += 1;
+            emit_event(
+                on_event,
+                ExecutionEvent::ActionError {
+                    index: result.index,
+                    total: result.total,
+                    action: result.action_name,
+                    path: result.path.clone(),
+                    error: clone_error_for_event(&err),
+                },
+            );
+            errors.push((result.path, err));
+        }
+    }
+}
+
+fn drain_parallel_handles(
+    in_flight: &mut Vec<thread::JoinHandle<ParallelTransferResult>>,
+    on_event: Option<&ExecutionCallback>,
+    stats: &mut ExecutionStats,
+    errors: &mut Vec<(Option<PathBuf>, KopyError)>,
+) -> Result<(), KopyError> {
+    while let Some(handle) = in_flight.pop() {
+        let result = handle
+            .join()
+            .map_err(|_| KopyError::Validation("parallel worker thread panicked".to_string()))?;
+        apply_parallel_result(result, on_event, stats, errors);
+    }
+    Ok(())
+}
+
+fn is_small_parallel_transfer(action: &SyncAction) -> bool {
+    if !action.requires_transfer() {
+        return false;
+    }
+    let size = action.file_entry().map(|entry| entry.size).unwrap_or(0);
+    size <= LARGE_TRANSFER_THRESHOLD_BYTES
 }
 
 fn resolve_transfer_paths(
@@ -584,5 +796,123 @@ mod tests {
 
         let snapshot = events.lock().expect("lock events snapshot").clone();
         assert_eq!(snapshot, vec!["start", "success", "complete"]);
+    }
+
+    #[test]
+    fn test_execute_plan_parallel_mixed_transfer_and_delete() {
+        let src = tempfile::tempdir().expect("create src tempdir");
+        let dst = tempfile::tempdir().expect("create dst tempdir");
+        let mut config = config_for(&src, &dst, DeleteMode::Trash);
+        config.threads = 4;
+
+        let small_payload = vec![b'a'; 1024];
+        fs::write(src.path().join("small.txt"), &small_payload).expect("write small source");
+
+        let large_size = LARGE_TRANSFER_THRESHOLD_BYTES + 1;
+        let large_path = src.path().join("large.bin");
+        let large_file = fs::File::create(&large_path).expect("create large source");
+        large_file
+            .set_len(large_size)
+            .expect("set large source len");
+
+        fs::write(dst.path().join("old.txt"), b"trash-me").expect("write old destination");
+
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::CopyNew(entry(
+            "small.txt",
+            small_payload.len() as u64,
+        )));
+        plan.add_action(SyncAction::CopyNew(entry("large.bin", large_size)));
+        plan.add_action(SyncAction::Delete(PathBuf::from("old.txt")));
+
+        let stats = execute_plan_parallel(&plan, &config, None).expect("execute parallel plan");
+        assert_eq!(stats.total_actions, 3);
+        assert_eq!(stats.completed_actions, 3);
+        assert_eq!(stats.failed_actions, 0);
+        assert_eq!(
+            fs::metadata(dst.path().join("small.txt"))
+                .expect("metadata small destination")
+                .len(),
+            small_payload.len() as u64
+        );
+        assert_eq!(
+            fs::metadata(dst.path().join("large.bin"))
+                .expect("metadata large destination")
+                .len(),
+            large_size
+        );
+        assert!(!dst.path().join("old.txt").exists());
+    }
+
+    #[test]
+    fn test_execute_plan_parallel_continues_on_error() {
+        let src = tempfile::tempdir().expect("create src tempdir");
+        let dst = tempfile::tempdir().expect("create dst tempdir");
+        let mut config = config_for(&src, &dst, DeleteMode::None);
+        config.threads = 4;
+
+        fs::write(src.path().join("good.txt"), b"good").expect("write good source");
+
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::CopyNew(entry("missing.txt", 10)));
+        plan.add_action(SyncAction::CopyNew(entry("good.txt", 4)));
+
+        let result = execute_plan_parallel(&plan, &config, None);
+        assert!(result.is_err());
+        assert!(dst.path().join("good.txt").exists());
+    }
+
+    #[test]
+    fn test_execute_plan_parallel_emits_complete_event() {
+        let src = tempfile::tempdir().expect("create src tempdir");
+        let dst = tempfile::tempdir().expect("create dst tempdir");
+        let mut config = config_for(&src, &dst, DeleteMode::None);
+        config.threads = 2;
+
+        fs::write(src.path().join("one.txt"), b"one").expect("write source file");
+        let mut plan = DiffPlan::new();
+        plan.add_action(SyncAction::CopyNew(entry("one.txt", 3)));
+
+        let events: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let events_ref = Arc::clone(&events);
+        let callback = move |event: &ExecutionEvent| {
+            let label = match event {
+                ExecutionEvent::ActionStart { .. } => "start",
+                ExecutionEvent::ActionSuccess { .. } => "success",
+                ExecutionEvent::ActionError { .. } => "error",
+                ExecutionEvent::Complete { .. } => "complete",
+            };
+            events_ref
+                .lock()
+                .expect("lock events")
+                .push(label.to_string());
+        };
+
+        let stats =
+            execute_plan_parallel(&plan, &config, Some(&callback)).expect("execute parallel plan");
+        assert_eq!(stats.failed_actions, 0);
+
+        let snapshot = events.lock().expect("lock events snapshot").clone();
+        assert_eq!(snapshot, vec!["start", "success", "complete"]);
+    }
+
+    #[test]
+    fn test_execute_plan_parallel_many_small_transfers_complete() {
+        let src = tempfile::tempdir().expect("create src tempdir");
+        let dst = tempfile::tempdir().expect("create dst tempdir");
+        let mut config = config_for(&src, &dst, DeleteMode::None);
+        config.threads = 2;
+
+        let mut plan = DiffPlan::new();
+        for i in 0..200 {
+            let name = format!("f_{i}.txt");
+            fs::write(src.path().join(&name), b"x").expect("write source");
+            plan.add_action(SyncAction::CopyNew(entry(&name, 1)));
+        }
+
+        let stats = execute_plan_parallel(&plan, &config, None).expect("execute parallel plan");
+        assert_eq!(stats.total_actions, 200);
+        assert_eq!(stats.completed_actions, 200);
+        assert_eq!(stats.failed_actions, 0);
     }
 }

@@ -1,7 +1,7 @@
 //! Main sync command
 
 use crate::diff::{compare_files, generate_sync_plan, DiffPlan};
-use crate::executor::{execute_plan, ExecutionEvent};
+use crate::executor::{execute_plan, execute_plan_parallel, ExecutionEvent};
 use crate::scanner::{
     resolve_scan_mode, scan_directory, scan_directory_parallel, ResolvedScanMode,
 };
@@ -144,7 +144,11 @@ pub fn run(config: Config) -> Result<(), KopyError> {
         }
     };
 
-    let result = execute_plan(&plan, &config, Some(&progress_cb));
+    let result = if config.threads > 1 {
+        execute_plan_parallel(&plan, &config, Some(&progress_cb))
+    } else {
+        execute_plan(&plan, &config, Some(&progress_cb))
+    };
     if let Ok(records) = error_records.lock() {
         if !records.is_empty() {
             println!("{}", format_error_summary(&records));
@@ -248,7 +252,11 @@ fn run_single_file_sync(config: Config) -> Result<(), KopyError> {
         }
     };
 
-    execute_plan(&plan, &single_file_config, Some(&progress_cb))?;
+    if single_file_config.threads > 1 {
+        execute_plan_parallel(&plan, &single_file_config, Some(&progress_cb))?;
+    } else {
+        execute_plan(&plan, &single_file_config, Some(&progress_cb))?;
+    }
     Ok(())
 }
 
