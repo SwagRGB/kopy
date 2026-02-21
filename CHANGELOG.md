@@ -13,23 +13,32 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 - Auto scan-mode resolver with bounded probe heuristics for deep vs wide trees.
 - `scan_bench` utility binary for local sequential/parallel scanner benchmarking and parity checks.
 - Peak RSS reporting in `scan_bench` (Linux `VmHWM`) for memory profiling runs.
+- Parallel transfer execution path via `execute_plan_parallel()` with size-aware routing:
+  - small transfer actions run concurrently
+  - large transfer actions run in a serialized lane to reduce I/O contention
+- Single-file sync support (file source to destination file or destination directory), including checksum-safe diff behavior.
 - Regression coverage for:
   - canonical-equal source/destination validation via symlink alias
   - file-vs-directory conflict planning paths
   - `DeleteMode::None` non-destructive delete behavior
   - parallel collector fallback trigger/no-trigger scenarios with sequential parity validation
+  - high-cardinality small-transfer parallel execution completion path
 
 ### Fixed
 - Reject source/destination roots that resolve to the same canonical directory (not only nested paths).
 - Diff planning conflict handling for file-vs-directory path collisions.
 - Permanent delete TOCTOU handling to treat post-check `NotFound` as success.
 - Permanent delete error mapping to preserve typed `PermissionDenied`/`DiskFull` classifications.
+- Single-file transfer reporting now reliably emits completion summary/progress reconciliation.
+- Parallel executor no longer creates a nested Tokio runtime in library sync execution paths.
 
 ### Changed
 - Reduced mutex lock scope in parallel scanning workers to avoid serializing metadata/filter work under contention.
 - Sync scan path now routes through scan-mode resolution (manual override + auto default).
 - Parallel scan progress callback delivery is serialized and monotonic while remaining live during traversal.
 - Parallel scanner now switches from buffered collection to direct `FileTree` insertion when collector memory estimate exceeds threshold.
+- Project runtime support narrowed to Linux-only execution paths (Windows behavior deferred).
+- Parallel plan execution backend now uses panic-safe synchronous worker threads (runtime-agnostic for async embedders).
 ## [0.4.12] - 2026-02-18
 
 ### Added
