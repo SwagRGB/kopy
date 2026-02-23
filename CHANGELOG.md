@@ -23,6 +23,11 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
   - `DeleteMode::None` non-destructive delete behavior
   - parallel collector fallback trigger/no-trigger scenarios with sequential parity validation
   - high-cardinality small-transfer parallel execution completion path
+- Transfer concurrency control via `--threads` with hardware-aware auto default (`0` => `available_parallelism`, clamped).
+- Transfer classification tuning controls:
+  - `--storage-profile` (`auto`, `hdd`, `ssd`)
+  - `--large-transfer-threshold` (human-readable sizes like `64MiB`)
+- `profile_bench` utility binary to benchmark profile choices (`auto/hdd/ssd`) on local datasets and print a recommendation.
 
 ### Fixed
 - Reject source/destination roots that resolve to the same canonical directory (not only nested paths).
@@ -31,6 +36,9 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 - Permanent delete error mapping to preserve typed `PermissionDenied`/`DiskFull` classifications.
 - Single-file transfer reporting now reliably emits completion summary/progress reconciliation.
 - Parallel executor no longer creates a nested Tokio runtime in library sync execution paths.
+- Auto thread resolution is now applied consistently across scanner mode selection, scanner execution, and transfer execution paths.
+- `storage_profile=auto` now performs Linux device-type detection using mount/device metadata with parent-device fallback.
+- Storage profile auto-resolution tests are now hardware-agnostic to avoid environment-specific failures.
 
 ### Changed
 - Reduced mutex lock scope in parallel scanning workers to avoid serializing metadata/filter work under contention.
@@ -39,6 +47,8 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 - Parallel scanner now switches from buffered collection to direct `FileTree` insertion when collector memory estimate exceeds threshold.
 - Project runtime support narrowed to Linux-only execution paths (Windows behavior deferred).
 - Parallel plan execution backend now uses panic-safe synchronous worker threads (runtime-agnostic for async embedders).
+- Large-transfer classification in executor is now config-driven (no hardcoded threshold constant).
+- Default transfer threshold tuning now uses profile baselines (`hdd=8 MiB`, `ssd/auto=32 MiB`) with explicit CLI override precedence.
 ## [0.4.12] - 2026-02-18
 
 ### Added
