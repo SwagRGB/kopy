@@ -33,6 +33,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 /// # Ok::<(), kopy::types::KopyError>(())
 /// ```
 pub fn run(config: Config) -> Result<(), KopyError> {
+    maybe_print_storage_profile_note(&config);
     if config.source.is_file() {
         return run_single_file_sync(config);
     }
@@ -258,6 +259,15 @@ fn run_single_file_sync(config: Config) -> Result<(), KopyError> {
         execute_plan(&plan, &single_file_config, Some(&progress_cb))?;
     }
     Ok(())
+}
+
+fn maybe_print_storage_profile_note(config: &Config) {
+    if config.storage_profile_auto_fallback {
+        eprintln!(
+            "Note: could not detect disk type for --storage-profile auto; using SSD-tuned defaults. \
+             Override with --storage-profile hdd|ssd or --large-transfer-threshold."
+        );
+    }
 }
 
 fn build_source_file_entry(source_path: &std::path::Path) -> Result<FileEntry, KopyError> {

@@ -2,7 +2,7 @@
 //!
 //! Tests for Blake3 content hashing and checksum-based comparison
 
-use kopy::config::ScanMode;
+use kopy::config::{ScanMode, StorageProfile};
 use kopy::diff::generate_sync_plan;
 use kopy::hash::compute_hash;
 use kopy::types::{DeleteMode, FileEntry, FileTree};
@@ -23,6 +23,9 @@ fn create_test_config(checksum_mode: bool) -> Config {
         include_patterns: vec![],
         threads: 4,
         scan_mode: ScanMode::Auto,
+        storage_profile: StorageProfile::Auto,
+        large_transfer_threshold_bytes: 16 * 1024 * 1024,
+        storage_profile_auto_fallback: false,
         bandwidth_limit: None,
         backup_dir: None,
         watch: false,

@@ -62,8 +62,6 @@ pub use copy::copy_file_atomic;
 pub use pool::{ParallelExecutor, PoolStats, TransferJob};
 pub use trash::move_to_trash;
 
-const LARGE_TRANSFER_THRESHOLD_BYTES: u64 = 16 * 1024 * 1024;
-
 /// Execute a sync plan
 ///
 /// Executes actions sequentially, continues on per-file failures, and returns
@@ -184,7 +182,7 @@ pub fn execute_plan_parallel(
 
     for (idx, action) in plan.actions.iter().enumerate() {
         let index = idx + 1;
-        if is_small_parallel_transfer(action) {
+        if is_small_parallel_transfer(action, config.large_transfer_threshold_bytes) {
             emit_event(
                 on_event,
                 ExecutionEvent::ActionStart {
@@ -379,12 +377,12 @@ fn drain_parallel_handles(
     Ok(())
 }
 
-fn is_small_parallel_transfer(action: &SyncAction) -> bool {
+fn is_small_parallel_transfer(action: &SyncAction, threshold_bytes: u64) -> bool {
     if !action.requires_transfer() {
         return false;
     }
     let size = action.file_entry().map(|entry| entry.size).unwrap_or(0);
-    size <= LARGE_TRANSFER_THRESHOLD_BYTES
+    size <= threshold_bytes
 }
 
 fn resolve_transfer_paths(
@@ -571,7 +569,7 @@ fn build_error_summary(errors: &[(Option<PathBuf>, KopyError)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::ScanMode;
+    use crate::config::{ScanMode, StorageProfile};
     use crate::types::FileEntry;
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, UNIX_EPOCH};
@@ -588,6 +586,9 @@ mod tests {
             include_patterns: vec![],
             threads: 1,
             scan_mode: ScanMode::Auto,
+            storage_profile: StorageProfile::Auto,
+            large_transfer_threshold_bytes: 16 * 1024 * 1024,
+            storage_profile_auto_fallback: false,
             bandwidth_limit: None,
             backup_dir: None,
             watch: false,
@@ -808,7 +809,7 @@ mod tests {
         let small_payload = vec![b'a'; 1024];
         fs::write(src.path().join("small.txt"), &small_payload).expect("write small source");
 
-        let large_size = LARGE_TRANSFER_THRESHOLD_BYTES + 1;
+        let large_size = config.large_transfer_threshold_bytes + 1;
         let large_path = src.path().join("large.bin");
         let large_file = fs::File::create(&large_path).expect("create large source");
         large_file
@@ -914,5 +915,12 @@ mod tests {
         assert_eq!(stats.total_actions, 200);
         assert_eq!(stats.completed_actions, 200);
         assert_eq!(stats.failed_actions, 0);
+    }
+
+    #[test]
+    fn test_small_transfer_classification_uses_config_threshold() {
+        let action = SyncAction::CopyNew(entry("threshold.bin", 20 * 1024 * 1024));
+        assert!(!is_small_parallel_transfer(&action, 16 * 1024 * 1024));
+        assert!(is_small_parallel_transfer(&action, 32 * 1024 * 1024));
     }
 }
