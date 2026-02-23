@@ -42,6 +42,10 @@ pub struct Cli {
     /// Scan strategy: auto chooses based on sampled tree shape.
     #[arg(long, value_enum, default_value_t = ScanMode::Auto)]
     pub scan_mode: ScanMode,
+
+    /// Transfer worker threads (0 = auto based on CPU cores).
+    #[arg(long, default_value_t = 0)]
+    pub threads: usize,
 }
 
 /// Directory scan execution mode.
@@ -108,7 +112,7 @@ impl Default for Config {
             delete_mode: DeleteMode::None,
             exclude_patterns: Vec::new(),
             include_patterns: Vec::new(),
-            threads: 4,
+            threads: 0,
             scan_mode: ScanMode::Auto,
             bandwidth_limit: None,
             backup_dir: None,
@@ -119,6 +123,14 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Resolve configured worker threads into an execution count.
+    ///
+    /// `0` means auto, which derives from host CPU parallelism and is clamped
+    /// to a safe upper bound to avoid accidental oversubscription.
+    pub fn resolved_threads(&self) -> usize {
+        resolve_threads(self.threads)
+    }
+
     /// Validate configuration
     ///
     /// Ensures:
@@ -285,6 +297,19 @@ fn normalize_path(path: &Path) -> PathBuf {
     normalized
 }
 
+const MAX_AUTO_THREADS: usize = 64;
+
+fn resolve_threads(requested: usize) -> usize {
+    if requested == 0 {
+        let detected = std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1);
+        return detected.clamp(1, MAX_AUTO_THREADS);
+    }
+
+    requested.clamp(1, MAX_AUTO_THREADS)
+}
+
 impl TryFrom<Cli> for Config {
     type Error = super::types::KopyError;
 
@@ -322,6 +347,7 @@ impl TryFrom<Cli> for Config {
             exclude_patterns: cli.exclude,
             include_patterns: cli.include,
             scan_mode: cli.scan_mode,
+            threads: cli.threads,
             ..Default::default()
         };
 
@@ -359,6 +385,7 @@ mod tests {
         assert!(config.exclude_patterns.is_empty());
         assert!(config.include_patterns.is_empty());
         assert_eq!(config.scan_mode, ScanMode::Auto);
+        assert_eq!(config.threads, 0);
     }
 
     #[test]
@@ -596,6 +623,7 @@ mod tests {
             exclude: vec!["*.tmp".to_string()],
             include: vec!["*.rs".to_string()],
             scan_mode: ScanMode::Auto,
+            threads: 7,
         };
 
         let config = Config::try_from(cli).unwrap();
@@ -604,6 +632,7 @@ mod tests {
         assert_eq!(config.exclude_patterns, vec!["*.tmp"]);
         assert_eq!(config.include_patterns, vec!["*.rs"]);
         assert_eq!(config.scan_mode, ScanMode::Auto);
+        assert_eq!(config.threads, 7);
         assert!(!config.dry_run);
         assert!(!config.checksum_mode);
     }
@@ -623,6 +652,7 @@ mod tests {
             exclude: vec![],
             include: vec![],
             scan_mode: ScanMode::Auto,
+            threads: 0,
         };
 
         let config = Config::try_from(cli).unwrap();
@@ -645,6 +675,7 @@ mod tests {
             exclude: vec![],
             include: vec![],
             scan_mode: ScanMode::Auto,
+            threads: 0,
         };
 
         let config = Config::try_from(cli).unwrap();
@@ -667,6 +698,7 @@ mod tests {
             exclude: vec![],
             include: vec![],
             scan_mode: ScanMode::Auto,
+            threads: 0,
         };
 
         let config = Config::try_from(cli).unwrap();
@@ -688,6 +720,7 @@ mod tests {
             exclude: vec![],
             include: vec![],
             scan_mode: ScanMode::Auto,
+            threads: 0,
         };
 
         let result = Config::try_from(cli);
@@ -711,6 +744,38 @@ mod tests {
         let cli = Cli::try_parse_from(["kopy", "src", "dst", "--scan-mode", "parallel"])
             .expect("parse cli");
         assert_eq!(cli.scan_mode, ScanMode::Parallel);
+    }
+
+    #[test]
+    fn test_cli_parse_threads_explicit() {
+        let cli = Cli::try_parse_from(["kopy", "src", "dst", "--threads", "8"]).expect("parse cli");
+        assert_eq!(cli.threads, 8);
+    }
+
+    #[test]
+    fn test_cli_parse_threads_default_auto() {
+        let cli = Cli::try_parse_from(["kopy", "src", "dst"]).expect("parse cli");
+        assert_eq!(cli.threads, 0);
+    }
+
+    #[test]
+    fn test_resolved_threads_auto_uses_host_parallelism() {
+        let config = Config {
+            threads: 0,
+            ..Default::default()
+        };
+        let resolved = config.resolved_threads();
+        assert!(resolved >= 1);
+        assert!(resolved <= MAX_AUTO_THREADS);
+    }
+
+    #[test]
+    fn test_resolved_threads_clamps_upper_bound() {
+        let config = Config {
+            threads: usize::MAX,
+            ..Default::default()
+        };
+        assert_eq!(config.resolved_threads(), MAX_AUTO_THREADS);
     }
 
     #[cfg(unix)]

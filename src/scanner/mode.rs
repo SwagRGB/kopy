@@ -31,7 +31,7 @@ pub fn resolve_scan_mode(root_path: &Path, config: &Config) -> Result<ResolvedSc
         ScanMode::Sequential => Ok(ResolvedScanMode::Sequential),
         ScanMode::Parallel => Ok(ResolvedScanMode::Parallel),
         ScanMode::Auto => {
-            if config.threads <= 1 {
+            if config.resolved_threads() <= 1 {
                 return Ok(ResolvedScanMode::Sequential);
             }
             let shape = sample_scan_shape(root_path, config)?;

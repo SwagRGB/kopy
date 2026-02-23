@@ -62,7 +62,7 @@ fn scan_directory_parallel_with_limit(
     let root = root_path.to_path_buf();
     let cfg = config.clone();
     let collected = Arc::new(Mutex::new(CollectedScan::default()));
-    let thread_count = config.threads.max(1);
+    let thread_count = config.resolved_threads();
     let progress = Arc::new(Mutex::new(ProgressState::default()));
 
     let walker = ignore::WalkBuilder::new(root_path)

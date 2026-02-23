@@ -144,7 +144,7 @@ pub fn run(config: Config) -> Result<(), KopyError> {
         }
     };
 
-    let result = if config.threads > 1 {
+    let result = if config.resolved_threads() > 1 {
         execute_plan_parallel(&plan, &config, Some(&progress_cb))
     } else {
         execute_plan(&plan, &config, Some(&progress_cb))
@@ -252,7 +252,7 @@ fn run_single_file_sync(config: Config) -> Result<(), KopyError> {
         }
     };
 
-    if single_file_config.threads > 1 {
+    if single_file_config.resolved_threads() > 1 {
         execute_plan_parallel(&plan, &single_file_config, Some(&progress_cb))?;
     } else {
         execute_plan(&plan, &single_file_config, Some(&progress_cb))?;

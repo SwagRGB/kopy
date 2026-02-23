@@ -177,7 +177,7 @@ pub fn execute_plan_parallel(
     };
     let mut errors: Vec<(Option<PathBuf>, KopyError)> = Vec::new();
 
-    let worker_count = config.threads.max(1);
+    let worker_count = config.resolved_threads();
     let total = stats.total_actions;
     let shared_config = config.clone();
     let mut in_flight: Vec<thread::JoinHandle<ParallelTransferResult>> = Vec::new();
