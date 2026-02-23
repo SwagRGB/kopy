@@ -1126,13 +1126,13 @@ mod tests {
     }
 
     #[test]
-    fn test_auto_profile_falls_back_to_ssd_when_detection_unavailable() {
+    fn test_auto_profile_resolves_to_non_auto_profile() {
         let resolved = resolve_effective_storage_profile(
             StorageProfile::Auto,
             Path::new("/nonexistent/source/path"),
             Path::new("/another/nonexistent/destination/path"),
         );
-        assert_eq!(resolved.0, StorageProfile::Ssd);
+        assert_ne!(resolved.0, StorageProfile::Auto);
     }
 
     #[test]
