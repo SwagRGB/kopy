@@ -7,6 +7,8 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-02-24
+
 ### Added
 - Parallel scanner implementation (`scan_directory_parallel`) using ignore crate parallel traversal with parity-focused filtering behavior.
 - Scan mode selection controls via `--scan-mode` (`auto`, `sequential`, `parallel`).
@@ -39,6 +41,7 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 - Auto thread resolution is now applied consistently across scanner mode selection, scanner execution, and transfer execution paths.
 - `storage_profile=auto` now performs Linux device-type detection using mount/device metadata with parent-device fallback.
 - Storage profile auto-resolution tests are now hardware-agnostic to avoid environment-specific failures.
+- Trash conflict handling now falls back safely when `.kopy_trash` path collisions exist, with scanner exclusion parity for fallback trash roots.
 
 ### Changed
 - Reduced mutex lock scope in parallel scanning workers to avoid serializing metadata/filter work under contention.
@@ -49,6 +52,8 @@ Entries before `0.4.11` are backfilled from git history and version bump commits
 - Parallel plan execution backend now uses panic-safe synchronous worker threads (runtime-agnostic for async embedders).
 - Large-transfer classification in executor is now config-driven (no hardcoded threshold constant).
 - Default transfer threshold tuning now uses profile baselines (`hdd=8 MiB`, `ssd/auto=32 MiB`) with explicit CLI override precedence.
+- `scan_bench` now defaults to `threads=0` (auto), and reports both requested and resolved thread counts.
+
 ## [0.4.12] - 2026-02-18
 
 ### Added
