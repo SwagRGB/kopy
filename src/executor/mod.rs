@@ -10,7 +10,7 @@ use crate::Config;
 use std::fs;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
-use std::thread;
+use std::sync::Arc;
 
 /// Execution progress statistics for a sync run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -59,7 +59,7 @@ pub enum ExecutionEvent {
 pub type ExecutionCallback = dyn Fn(&ExecutionEvent) + Send + Sync;
 
 pub use copy::copy_file_atomic;
-pub use pool::{ParallelExecutor, PoolStats, TransferJob};
+pub use pool::{EnqueueError, ParallelExecutor, PoolStats, TransferJob, TransferResult};
 pub use trash::move_to_trash;
 
 /// Execute a sync plan
@@ -175,10 +175,25 @@ pub fn execute_plan_parallel(
     };
     let mut errors: Vec<(Option<PathBuf>, KopyError)> = Vec::new();
 
-    let worker_count = config.resolved_threads();
+    let worker_count = config.resolved_threads().max(1);
     let total = stats.total_actions;
     let shared_config = config.clone();
-    let mut in_flight: Vec<thread::JoinHandle<ParallelTransferResult>> = Vec::new();
+    let queue_capacity = worker_count * 2;
+    let handler = {
+        let config = shared_config.clone();
+        Arc::new(move |job: TransferJob| {
+            let result = execute_action(&job.action, &config);
+            TransferResult {
+                index: job.index,
+                total: job.total,
+                action_name: job.action_name,
+                path: job.path,
+                result,
+            }
+        })
+    };
+    let pool = ParallelExecutor::new(worker_count, queue_capacity, handler)?;
+    let mut pending_results = 0usize;
 
     for (idx, action) in plan.actions.iter().enumerate() {
         let index = idx + 1;
@@ -193,32 +208,53 @@ pub fn execute_plan_parallel(
                 },
             );
 
-            let action_clone = action.clone();
-            let config_clone = shared_config.clone();
-            in_flight.push(thread::spawn(move || {
-                let action_name = action_clone.action_name();
-                let path = action_clone.path().cloned();
-                let result = execute_action(&action_clone, &config_clone);
-                ParallelTransferResult {
-                    index,
-                    total,
-                    action_name,
-                    path,
-                    result,
+            let job = TransferJob {
+                index,
+                total,
+                action_name: action.action_name(),
+                path: action.path().cloned(),
+                action: action.clone(),
+            };
+            loop {
+                match pool.try_enqueue(job.clone()) {
+                    Ok(()) => {
+                        pending_results += 1;
+                        break;
+                    }
+                    Err(EnqueueError::Full) => {
+                        drain_one_parallel_result(
+                            &pool,
+                            &mut pending_results,
+                            on_event,
+                            &mut stats,
+                            &mut errors,
+                        )?;
+                    }
+                    Err(EnqueueError::Closed) => {
+                        return Err(KopyError::Validation(
+                            "parallel executor queue receiver is closed".to_string(),
+                        ));
+                    }
                 }
-            }));
-
-            if in_flight.len() >= worker_count {
-                let handle = in_flight.remove(0);
-                let result = handle.join().map_err(|_| {
-                    KopyError::Validation("parallel worker thread panicked".to_string())
-                })?;
-                apply_parallel_result(result, on_event, &mut stats, &mut errors);
             }
+
+            drain_parallel_results_available(
+                &pool,
+                &mut pending_results,
+                on_event,
+                &mut stats,
+                &mut errors,
+            )?;
             continue;
         }
 
-        drain_parallel_handles(&mut in_flight, on_event, &mut stats, &mut errors)?;
+        drain_parallel_results_required(
+            &pool,
+            &mut pending_results,
+            on_event,
+            &mut stats,
+            &mut errors,
+        )?;
         execute_action_with_events(
             action,
             index,
@@ -230,7 +266,14 @@ pub fn execute_plan_parallel(
         );
     }
 
-    drain_parallel_handles(&mut in_flight, on_event, &mut stats, &mut errors)?;
+    drain_parallel_results_required(
+        &pool,
+        &mut pending_results,
+        on_event,
+        &mut stats,
+        &mut errors,
+    )?;
+    let _ = pool.close_and_wait()?;
 
     emit_event(
         on_event,
@@ -262,15 +305,6 @@ fn execute_action(action: &SyncAction, config: &Config) -> Result<u64, KopyError
             "Move action is not supported by this executor".to_string(),
         )),
     }
-}
-
-#[derive(Debug)]
-struct ParallelTransferResult {
-    index: usize,
-    total: usize,
-    action_name: &'static str,
-    path: Option<PathBuf>,
-    result: Result<u64, KopyError>,
 }
 
 fn execute_action_with_events(
@@ -325,7 +359,7 @@ fn execute_action_with_events(
 }
 
 fn apply_parallel_result(
-    result: ParallelTransferResult,
+    result: TransferResult,
     on_event: Option<&ExecutionCallback>,
     stats: &mut ExecutionStats,
     errors: &mut Vec<(Option<PathBuf>, KopyError)>,
@@ -362,18 +396,54 @@ fn apply_parallel_result(
     }
 }
 
-fn drain_parallel_handles(
-    in_flight: &mut Vec<thread::JoinHandle<ParallelTransferResult>>,
+fn drain_parallel_results_available(
+    pool: &ParallelExecutor,
+    pending_results: &mut usize,
     on_event: Option<&ExecutionCallback>,
     stats: &mut ExecutionStats,
     errors: &mut Vec<(Option<PathBuf>, KopyError)>,
 ) -> Result<(), KopyError> {
-    while let Some(handle) = in_flight.pop() {
-        let result = handle
-            .join()
-            .map_err(|_| KopyError::Validation("parallel worker thread panicked".to_string()))?;
+    while *pending_results > 0 {
+        match pool.try_recv_result()? {
+            Some(result) => {
+                *pending_results -= 1;
+                apply_parallel_result(result, on_event, stats, errors);
+            }
+            None => break,
+        }
+    }
+    Ok(())
+}
+
+fn drain_parallel_results_required(
+    pool: &ParallelExecutor,
+    pending_results: &mut usize,
+    on_event: Option<&ExecutionCallback>,
+    stats: &mut ExecutionStats,
+    errors: &mut Vec<(Option<PathBuf>, KopyError)>,
+) -> Result<(), KopyError> {
+    while *pending_results > 0 {
+        let result = pool.recv_result()?;
+        *pending_results -= 1;
         apply_parallel_result(result, on_event, stats, errors);
     }
+    Ok(())
+}
+
+fn drain_one_parallel_result(
+    pool: &ParallelExecutor,
+    pending_results: &mut usize,
+    on_event: Option<&ExecutionCallback>,
+    stats: &mut ExecutionStats,
+    errors: &mut Vec<(Option<PathBuf>, KopyError)>,
+) -> Result<(), KopyError> {
+    if *pending_results == 0 {
+        std::thread::yield_now();
+        return Ok(());
+    }
+    let result = pool.recv_result()?;
+    *pending_results -= 1;
+    apply_parallel_result(result, on_event, stats, errors);
     Ok(())
 }
 
