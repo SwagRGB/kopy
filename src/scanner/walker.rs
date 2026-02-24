@@ -228,7 +228,17 @@ pub(super) fn is_destination_internal_trash(
     config: &Config,
     relative_path: &Path,
 ) -> bool {
-    root_path == config.destination && relative_path.starts_with(".kopy_trash")
+    if root_path != config.destination {
+        return false;
+    }
+
+    let mut components = relative_path.components();
+    let Some(first) = components.next() else {
+        return false;
+    };
+    let first = first.as_os_str();
+    first == std::ffi::OsStr::new(".kopy_trash")
+        || first == std::ffi::OsStr::new(".kopy_trash_conflict")
 }
 
 #[cfg(test)]
@@ -609,6 +619,31 @@ mod tests {
         let tree = scan_directory(root_path, &config, None).expect("scan directory");
         assert!(tree.contains(&PathBuf::from("regular.txt")));
         assert!(!tree.contains(&PathBuf::from(".kopy_trash/snapshot/deleted.txt")));
+    }
+
+    #[test]
+    fn test_destination_scan_excludes_kopy_trash_conflict() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root_path = temp_dir.path();
+        fs::create_dir_all(root_path.join(".kopy_trash_conflict/snapshot"))
+            .expect("Failed to create fallback trash");
+        fs::write(
+            root_path.join(".kopy_trash_conflict/snapshot/deleted.txt"),
+            b"old",
+        )
+        .expect("write fallback trash");
+        fs::write(root_path.join("keep.txt"), b"keep").expect("write keep");
+
+        let config = Config {
+            source: PathBuf::from("/other"),
+            destination: root_path.to_path_buf(),
+            ..Default::default()
+        };
+
+        let tree = scan_directory(root_path, &config, None).expect("scan destination");
+
+        assert!(tree.contains(&PathBuf::from("keep.txt")));
+        assert!(!tree.contains(&PathBuf::from(".kopy_trash_conflict/snapshot/deleted.txt")));
     }
 
     #[test]

@@ -41,12 +41,8 @@ static COPY_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64, KopyError> {
     let part_path = build_temp_path(dest);
     let copy_result = (|| -> Result<u64, KopyError> {
-        if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
-        }
-
         let mut src_file = File::open(src).map_err(|e| map_file_error(src, e))?;
-        let mut part_file = File::create(&part_path).map_err(|e| map_file_error(dest, e))?;
+        let mut part_file = create_part_file_with_parent(&part_path, dest)?;
 
         let mut buffer = vec![0u8; 128 * 1024];
         let mut total_bytes = 0u64;
@@ -93,6 +89,28 @@ pub fn copy_file_atomic(src: &Path, dest: &Path, _config: &Config) -> Result<u64
     }
 
     copy_result
+}
+
+fn create_part_file_with_parent(part_path: &Path, dest: &Path) -> Result<File, KopyError> {
+    const MAX_PARENT_RACE_RETRIES: usize = 3;
+    for attempt in 0..MAX_PARENT_RACE_RETRIES {
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(|e| map_file_error(parent, e))?;
+        }
+
+        match File::create(part_path) {
+            Ok(file) => return Ok(file),
+            Err(e) if e.kind() == ErrorKind::NotFound && attempt + 1 < MAX_PARENT_RACE_RETRIES => {
+                continue;
+            }
+            Err(e) => return Err(map_file_error(dest, e)),
+        }
+    }
+
+    Err(KopyError::Validation(format!(
+        "Failed to create temporary file for {} after retries",
+        dest.display()
+    )))
 }
 
 fn build_temp_path(dest: &Path) -> PathBuf {

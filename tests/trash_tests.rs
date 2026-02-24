@@ -166,3 +166,65 @@ fn test_trash_multiple_files() {
         "Should have 2 total files across all manifests"
     );
 }
+
+#[test]
+fn test_trash_root_conflict_falls_back_to_alternate_base() {
+    let dest_dir = TempDir::new().expect("Failed to create temp dir");
+    let dest_path = dest_dir.path();
+    fs::write(dest_path.join(".kopy_trash"), b"conflict").expect("create conflicting trash file");
+
+    let test_file = create_test_file(dest_path, "conflict_case.txt", "content");
+    let config = Config::default();
+
+    move_to_trash(
+        &test_file,
+        dest_path,
+        Path::new("conflict_case.txt"),
+        &config,
+    )
+    .expect("move to trash");
+
+    assert!(!test_file.exists(), "Original file should be moved");
+    assert!(
+        dest_path.join(".kopy_trash_conflict").exists(),
+        "Fallback trash base should be created"
+    );
+}
+
+#[test]
+fn test_trash_snapshot_conflict_uses_suffixed_snapshot_directory() {
+    let dest_dir = TempDir::new().expect("Failed to create temp dir");
+    let dest_path = dest_dir.path();
+    let trash_base = dest_path.join(".kopy_trash");
+    fs::create_dir_all(&trash_base).expect("create trash base");
+
+    // Pre-seed a wide timestamp window to avoid second-boundary flakiness.
+    let now = chrono::Local::now();
+    for offset in -120i64..=120i64 {
+        let ts = (now + chrono::Duration::seconds(offset))
+            .format("%Y-%m-%d_%H%M%S")
+            .to_string();
+        fs::write(trash_base.join(ts), b"not-a-directory").expect("create snapshot conflict");
+    }
+
+    let test_file = create_test_file(dest_path, "snapshot_conflict.txt", "payload");
+    let config = Config::default();
+    move_to_trash(
+        &test_file,
+        dest_path,
+        Path::new("snapshot_conflict.txt"),
+        &config,
+    )
+    .expect("move to trash");
+
+    let entries: Vec<_> = fs::read_dir(&trash_base)
+        .expect("read trash base")
+        .filter_map(Result::ok)
+        .collect();
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.file_name().to_string_lossy().contains(".~kopy")),
+        "Expected a suffixed snapshot directory after conflict"
+    );
+}

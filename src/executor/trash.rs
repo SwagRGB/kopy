@@ -10,7 +10,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Error, ErrorKind};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Represents a single deleted file in the trash
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,8 +87,8 @@ pub fn move_to_trash(
     config: &Config,
 ) -> Result<(), KopyError> {
     let timestamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
-
-    let trash_root = dest_root.join(".kopy_trash").join(&timestamp);
+    let trash_base = resolve_trash_base(dest_root)?;
+    let trash_root = resolve_snapshot_root(&trash_base, &timestamp)?;
     let (trash_relative_path, trash_file_path) =
         resolve_unique_trash_path(&trash_root, relative_path);
 
@@ -141,6 +141,69 @@ pub fn move_to_trash(
     fs::write(&manifest_path, manifest_json).map_err(|e| map_file_error(&manifest_path, e))?;
 
     Ok(())
+}
+
+fn resolve_trash_base(dest_root: &Path) -> Result<PathBuf, KopyError> {
+    let candidates = [".kopy_trash", ".kopy_trash_conflict"];
+    for name in candidates {
+        let candidate = dest_root.join(name);
+        match fs::symlink_metadata(&candidate) {
+            Ok(metadata) => {
+                if metadata.file_type().is_dir() {
+                    return Ok(candidate);
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => match fs::create_dir_all(&candidate) {
+                Ok(()) => return Ok(candidate),
+                Err(create_err) if create_err.kind() == ErrorKind::AlreadyExists => {
+                    if fs::symlink_metadata(&candidate)
+                        .map(|meta| meta.file_type().is_dir())
+                        .unwrap_or(false)
+                    {
+                        return Ok(candidate);
+                    }
+                }
+                Err(create_err) => return Err(map_file_error(&candidate, create_err)),
+            },
+            Err(e) => return Err(map_file_error(&candidate, e)),
+        }
+    }
+
+    Err(KopyError::Validation(format!(
+        "Unable to create a usable trash directory under {}",
+        dest_root.display()
+    )))
+}
+
+fn resolve_snapshot_root(trash_base: &Path, timestamp: &str) -> Result<PathBuf, KopyError> {
+    for idx in 0usize.. {
+        let dir_name = if idx == 0 {
+            timestamp.to_string()
+        } else {
+            format!("{timestamp}.~kopy{idx}")
+        };
+        let snapshot = trash_base.join(dir_name);
+
+        match fs::create_dir(&snapshot) {
+            Ok(()) => return Ok(snapshot),
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                if fs::symlink_metadata(&snapshot)
+                    .map(|meta| meta.file_type().is_dir())
+                    .unwrap_or(false)
+                {
+                    return Ok(snapshot);
+                }
+                continue;
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                fs::create_dir_all(trash_base).map_err(|err| map_file_error(trash_base, err))?;
+                continue;
+            }
+            Err(e) => return Err(map_file_error(&snapshot, e)),
+        }
+    }
+
+    unreachable!("infinite candidate space for snapshot directories")
 }
 
 fn resolve_unique_trash_path(

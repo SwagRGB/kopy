@@ -427,6 +427,32 @@ mod tests {
     }
 
     #[test]
+    fn test_parallel_destination_scan_excludes_kopy_trash_conflict() {
+        let temp = TempDir::new().expect("create temp dir");
+        fs::create_dir_all(temp.path().join(".kopy_trash_conflict/2026-01-01"))
+            .expect("create fallback trash dir");
+        fs::write(
+            temp.path()
+                .join(".kopy_trash_conflict/2026-01-01/deleted.txt"),
+            b"x",
+        )
+        .expect("write fallback trash file");
+        fs::write(temp.path().join("keep.txt"), b"keep").expect("write keep file");
+
+        let config = Config {
+            source: PathBuf::from("/other"),
+            destination: temp.path().to_path_buf(),
+            ..Config::default()
+        };
+
+        let tree = scan_directory_parallel(temp.path(), &config, None).expect("scan succeeds");
+        assert!(tree.contains(&PathBuf::from("keep.txt")));
+        assert!(!tree.contains(&PathBuf::from(
+            ".kopy_trash_conflict/2026-01-01/deleted.txt"
+        )));
+    }
+
+    #[test]
     fn test_parallel_parity_with_sequential() {
         let temp = TempDir::new().expect("create temp dir");
         fs::create_dir_all(temp.path().join(".git")).expect("create .git");
