@@ -17,13 +17,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = match args.next() {
         Some(path) => PathBuf::from(path),
         None => {
-            eprintln!("Usage: cargo run --bin scan_bench -- <root_path> [runs] [threads]");
+            eprintln!(
+                "Usage: cargo run --bin scan_bench -- <root_path> [runs] [threads]\n\
+                 threads: 0 = auto (default)"
+            );
             std::process::exit(2);
         }
     };
 
     let runs: usize = args.next().and_then(|v| v.parse().ok()).unwrap_or(5);
-    let threads: usize = args.next().and_then(|v| v.parse().ok()).unwrap_or(8);
+    let threads: usize = args.next().and_then(|v| v.parse().ok()).unwrap_or(0);
 
     let config = Config {
         source: root.clone(),
@@ -33,10 +36,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     println!(
-        "Benchmarking scan on {}\nRuns: {} (threads={})",
+        "Benchmarking scan on {}\nRuns: {} (threads: requested={}, resolved={})",
         root.display(),
         runs,
-        threads
+        threads,
+        config.resolved_threads()
     );
 
     // Warm up both scanners once to reduce first-run noise.
